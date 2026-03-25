@@ -8,7 +8,7 @@ Think of it as a DIY [OpenClaw](https://github.com/openclaw/openclaw), but using
 
 - **Unified Memory Across Claude Code and Claude.ai** — The same SQLite memory backend serves both Claude Code (local MCP server) and Claude.ai chat (via Custom Connector + Cloudflare Tunnel). Memories saved in one are instantly available in the other. One brain, multiple interfaces.
 - **Memory System** — SQLite + FTS5 keyword search + Ollama bge-m3 vector embeddings. Hybrid search with time decay. MCP-based: Claude decides when to read/write memories.
-- **Multi-Channel** — Telegram (official plugin), WeChat (via bridge), Claude.ai chat (via Custom Connector). All channels share the same memory.
+- **Multi-Channel (all optional)** — Pick the channels you need: Telegram (official plugin), WeChat (via bridge), Claude.ai chat (via Custom Connector). Each is independent — install one, two, or all. They share the same memory.
 - **Scheduled Tasks** — Persistent tasks (morning briefing, reminders, nightly memory consolidation) using Claude Code's built-in scheduler.
 - **Heartbeat Agent** — Periodic automated checks with proactive notifications.
 - **Dashboard** — Single-file FastAPI app (localhost:3000). Component status, start/stop controls, memory browser, interaction heatmap.
@@ -39,10 +39,11 @@ Think of it as a DIY [OpenClaw](https://github.com/openclaw/openclaw), but using
 - **macOS** (some scripts use `osascript`; Linux needs minor tweaks)
 - **An always-on machine** — This is a local-first system. All services (memory server, Cloudflare Tunnel, heartbeat, scheduled tasks) run on your machine. If your computer sleeps or shuts down, they stop. For uninterrupted service, consider running on a Mac mini / home server, or disabling sleep (`caffeinate -s` on macOS).
 
-Optional:
-- **Ollama + bge-m3** — for semantic vector search (works without it, keyword-only)
-- **Cloudflare account** — to connect Claude.ai chat to your local memory
+Optional (install only what you need):
 - **Telegram Bot** — for Telegram channel
+- **WeChat** — via [claude-wechat-channel](https://www.npmjs.com/package/claude-wechat-channel) bridge
+- **Cloudflare account** — to connect Claude.ai chat to your local memory
+- **Ollama + bge-m3** — for semantic vector search (works without it, keyword-only)
 
 ## Quick Start
 
@@ -75,7 +76,7 @@ brew install ollama
 ollama pull bge-m3
 ```
 
-### 2. Telegram
+### 2. Telegram (optional)
 
 ```bash
 # Configure your bot token
@@ -85,7 +86,18 @@ claude /telegram:configure
 claude --channels plugin:telegram@claude-plugins-official
 ```
 
-### 3. Claude.ai Chat Integration
+### 3. WeChat (optional)
+
+```bash
+# Install the WeChat bridge
+npm install -g claude-wechat-channel
+
+# Add to your .mcp.json (see .mcp.json.example)
+# Start WeChat channel
+claude --dangerously-load-development-channels server:wechat
+```
+
+### 4. Claude.ai Chat Integration (optional)
 
 This is the key feature: **Claude.ai chat and Claude Code share the same memory database.** Memories saved in a chat conversation are searchable from Claude Code, and vice versa.
 
@@ -150,7 +162,7 @@ Adding the connector gives Claude.ai access to the tools, but it won't know *whe
 
 Once set up, the workflow is seamless: chat on Claude.ai during the day, switch to Claude Code for coding — same memories, no sync needed.
 
-### 4. Dashboard
+### 5. Dashboard
 
 ```bash
 python3.12 dashboard.py
@@ -159,7 +171,7 @@ python3.12 dashboard.py
 
 Manages all components from one page: start/stop services, browse memories, view scheduled tasks, interaction heatmap.
 
-### 5. Scheduled Tasks
+### 6. Scheduled Tasks
 
 Create persistent scheduled tasks through Claude Code:
 ```

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Claude Imprint — Start all services
-# Skips components that are already running
+# Automatically skips components that are not configured or already running
 
 cd "$(dirname "$0")"
 mkdir -p logs
@@ -23,8 +23,10 @@ else
     echo "   ✅ Memory HTTP (PID: $!, port 8000)"
 fi
 
-# 2. Cloudflare Tunnel (edit tunnel name below)
-if is_running .pid-tunnel; then
+# 2. Cloudflare Tunnel (skip if cloudflared not installed)
+if ! command -v cloudflared &>/dev/null; then
+    echo "   🌐 Tunnel: cloudflared not installed, skip"
+elif is_running .pid-tunnel; then
     echo "   🌐 Tunnel already running, skip"
 else
     echo "🌐 Starting Cloudflare Tunnel..."
@@ -34,18 +36,22 @@ else
     echo "   ✅ Tunnel started"
 fi
 
-# 3. Telegram (opens new terminal window — macOS)
+# 3. Telegram (skip if plugin not available)
 if pgrep -f "channels plugin:telegram" > /dev/null 2>&1; then
     echo "   📨 Telegram already running, skip"
+elif ! command -v claude &>/dev/null; then
+    echo "   📨 Telegram: claude not found, skip"
 else
     echo "📨 Starting Telegram..."
     osascript -e 'tell application "Terminal" to do script "claude --channels plugin:telegram@claude-plugins-official"' 2>/dev/null
     echo "   ✅ Telegram window opened"
 fi
 
-# 4. WeChat (opens new terminal window — macOS)
+# 4. WeChat (skip if not installed)
 if pgrep -f "dangerously-load-development-channels server:wechat" > /dev/null 2>&1; then
     echo "   📱 WeChat already running, skip"
+elif ! npm list -g claude-wechat-channel &>/dev/null 2>&1; then
+    echo "   📱 WeChat: claude-wechat-channel not installed, skip"
 else
     echo "📱 Starting WeChat..."
     osascript -e 'tell application "Terminal" to do script "claude --dangerously-load-development-channels server:wechat"' 2>/dev/null
