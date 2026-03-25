@@ -1,8 +1,8 @@
 # Claude Imprint
 
-A self-hosted AI agent system built on **Claude Code Max**. Multi-channel chat (Telegram + WeChat + Claude.ai), persistent memory with semantic search, scheduled tasks, and a single-file dashboard — all running on your own machine.
+A self-hosted AI agent system built on **Claude Code**. Multi-channel chat (Telegram + WeChat + Claude.ai), persistent memory with semantic search, scheduled tasks, and a single-file dashboard — all running on your own machine.
 
-Think of it as a DIY [OpenClaw](https://github.com/nicholasgasior/OpenClaw), but using only official Claude Code features. No API costs beyond your Max subscription, no third-party account authorization, all data stays local.
+Think of it as a DIY [OpenClaw](https://github.com/nicholasgasior/OpenClaw), but using only official Claude Code features. No third-party account authorization, all data stays local.
 
 ## Features
 
@@ -27,7 +27,7 @@ You ← Telegram / WeChat / Claude.ai chat
 
 ## Prerequisites
 
-- **Claude Code Max subscription** (unlimited usage)
+- **Claude Code** (Pro or Max subscription recommended for heavy usage)
 - **Python 3.12+**
 - **macOS** (some scripts use `osascript`; Linux needs minor tweaks)
 
@@ -170,7 +170,7 @@ claude-imprint/
 |---|---|---|
 | Data location | Third-party servers | Your own machine |
 | Account security | Requires authorization | No third-party access |
-| Cost | Platform fee + API costs | Max subscription only |
+| Cost | Platform fee + API costs | Claude Code subscription |
 | Setup difficulty | Low (hosted) | Medium (self-hosted) |
 | Customization | Limited | Fully customizable |
 | Multi-channel | Many | Telegram + WeChat + Claude.ai |
