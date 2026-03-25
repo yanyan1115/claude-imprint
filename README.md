@@ -1,17 +1,22 @@
 # Claude Imprint
 
-A self-hosted AI agent system built on **Claude Code**. Multi-channel chat (Telegram + WeChat + Claude.ai), persistent memory with semantic search, scheduled tasks, and a single-file dashboard — all running on your own machine.
+### Turn Claude Code into your personal assistant that lives across all your devices.
 
-Think of it as a DIY [OpenClaw](https://github.com/openclaw/openclaw), but using only official Claude Code features. No third-party account authorization, all data stays local.
+A self-hosted system that extends Claude Code with persistent memory, multi-channel chat, and automation. Talk to Claude from Telegram, WeChat, or Claude.ai — it remembers everything, sets reminders, writes code, and manages your day. All data stays on your machine.
+
+Built for **Claude Code Pro/Max subscribers** who want to unlock more from their subscription. Uses only official Claude Code features — no API costs, no third-party authorization. Think of it as a DIY [OpenClaw](https://github.com/openclaw/openclaw), fully local and fully yours.
 
 ## Features
 
 - **Unified Memory Across Claude Code and Claude.ai** — The same SQLite memory backend serves both Claude Code (local MCP server) and Claude.ai chat (via Custom Connector + Cloudflare Tunnel). Memories saved in one are instantly available in the other. One brain, multiple interfaces.
 - **Custom Memory System (replaces CC's built-in memory)** — Claude Code's default memory is file-based and basic. This project replaces it with a full database-backed system: SQLite + FTS5 full-text search + Ollama bge-m3 vector embeddings. Hybrid retrieval (keyword + semantic + time decay scoring), categorized storage, daily logs, and MCP tools that let Claude autonomously decide when to remember and recall.
-- **Multi-Channel (all optional)** — Pick the channels you need: Telegram (official plugin), WeChat (via bridge), Claude.ai chat (via Custom Connector). Each is independent — install one, two, or all. They share the same memory.
+- **Search Memories From Any Channel** — Ask Claude to recall something from Telegram, WeChat, or Claude.ai — it searches the same memory database. What you told Claude on your phone is available when you sit down at your computer.
+- **Multi-Channel (all optional)** — Pick the channels you need: Telegram, WeChat, Claude.ai, or any future platform (Discord, etc.). Each is independent — install one, two, or all. They all share the same memory and can talk to Claude Code.
+- **Chat-to-Code** — Tell Claude from any chat platform to write code, run scripts, or manage your projects. Your messaging app becomes a remote control for Claude Code.
+- **Reminders From Chat** — Send a message like "remind me to call the dentist tomorrow at 3pm" from any platform. Claude creates a persistent scheduled task and notifies you on time.
 - **Scheduled Tasks** — Persistent tasks (morning briefing, reminders, nightly memory consolidation) using Claude Code's built-in scheduler.
 - **Heartbeat Agent** — Periodic automated checks with proactive notifications.
-- **Dashboard** — Single-file FastAPI app (localhost:3000). Component status, start/stop controls, memory browser, interaction heatmap.
+- **Dashboard** — Single-file FastAPI app (localhost:3000). Component status, start/stop controls, memory browser, and an interaction heatmap that shows how often you and Claude talk throughout the day.
 - **Pre-compaction Hook** — Automatically saves conversation context before Claude Code compresses the context window.
 
 ## Architecture
