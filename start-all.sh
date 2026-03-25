@@ -17,7 +17,7 @@ if is_running .pid-http; then
     echo "   🧠 Memory HTTP already running, skip"
 else
     echo "🧠 Starting Memory HTTP..."
-    python3.12 -u memory_mcp.py --http > logs/http.log 2>&1 &
+    python3 -u memory_mcp.py --http > logs/http.log 2>&1 &
     echo $! > .pid-http
     sleep 2
     echo "   ✅ Memory HTTP (PID: $!, port 8000)"
@@ -61,5 +61,5 @@ fi
 echo ""
 echo "========================================"
 echo "✨ Claude Imprint is running!"
-echo "   Dashboard: python3.12 dashboard.py → http://localhost:3000"
+echo "   Dashboard: python3 dashboard.py → http://localhost:3000"
 echo "   Stop all:  ./stop-all.sh"

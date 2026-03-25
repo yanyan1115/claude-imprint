@@ -115,7 +115,7 @@ async def run_heartbeat():
                      "--shell=bun", "--silent", "start"]
         },
         "imprint-memory": {
-            "command": "python3.12",
+            "command": "python3",
             "args": [str(PROJECT_DIR / "memory_mcp.py")]
         }
     }})

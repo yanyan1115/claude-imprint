@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """
 Claude Imprint — Dashboard
 localhost:3000 — manage all components: start/stop/status
@@ -25,7 +25,7 @@ COMPONENTS = {
     "memory_http": {
         "name": "🧠 Memory HTTP",
         "pid_file": ".pid-http",
-        "start_cmd": ["python3.12", str(BASE / "memory_mcp.py"), "--http"],
+        "start_cmd": ["python3", str(BASE / "memory_mcp.py"), "--http"],
         "log_file": "logs/http.log",
         "type": "background",
         "check_port": 8000,

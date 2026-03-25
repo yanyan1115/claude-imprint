@@ -54,19 +54,24 @@ Optional (install only what you need):
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/claude-imprint.git
+git clone https://github.com/Qizhan7/claude-imprint.git
 cd claude-imprint
+
+# (Recommended) Create a virtual environment
+python3 -m venv .venv && source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Register the memory MCP server (user-level, available in all CC sessions)
-claude mcp add -s user imprint-memory -- python3.12 $(pwd)/memory_mcp.py
+claude mcp add -s user imprint-memory -- python3 $(pwd)/memory_mcp.py
 
 # Start the dashboard
-python3.12 dashboard.py
+python3 dashboard.py
 # → http://localhost:3000
 ```
+
+> **Note:** This guide uses `python3` throughout. If you have multiple Python versions, replace with `python3` or whichever version you have (3.11+ required).
 
 ## Setup Guide
 
@@ -81,7 +86,57 @@ brew install ollama
 ollama pull bge-m3
 ```
 
-### 2. Telegram (optional)
+### 2. Write Your CLAUDE.md
+
+Create `~/.claude/CLAUDE.md` — this is what makes Claude yours. Here's a minimal starting template:
+
+```markdown
+# My Assistant
+
+## About Me
+- Name: [your name]
+- Timezone: [e.g., UTC-5, UTC+8]
+- Languages: [e.g., English, Chinese]
+
+## Personality
+- [How you want Claude to communicate: casual? formal? concise?]
+- [Any preferences: no emojis, direct answers, etc.]
+
+## Memory Rules
+- Save important information using memory_remember
+- Search memory before saying "I don't know"
+- Log significant events to the daily log
+
+## Notification Rules
+- Telegram chat_id: [your chat ID]
+- Quiet hours: 23:00-07:00 (no proactive messages)
+- Important events: notify immediately
+- Routine updates: batch and wait until asked
+```
+
+See the [Customization section](#customization-the-md-files) below for how this file relates to the others.
+
+### 3. Pre-compaction Hook (recommended)
+
+This hook automatically saves conversation context before Claude Code compresses the context window, so important details don't get lost:
+
+```bash
+# Register the hook in your Claude Code settings
+claude settings add-hook PreCompact "bash $(pwd)/hooks/pre-compact-flush.sh"
+```
+
+Or manually add to `~/.claude/settings.json`:
+```json
+{
+  "hooks": {
+    "PreCompact": [
+      { "command": "bash /path/to/claude-imprint/hooks/pre-compact-flush.sh" }
+    ]
+  }
+}
+```
+
+### 4. Telegram (optional)
 
 ```bash
 # Configure your bot token
@@ -91,7 +146,7 @@ claude /telegram:configure
 claude --channels plugin:telegram@claude-plugins-official
 ```
 
-### 3. WeChat (optional)
+### 5. WeChat (optional)
 
 ```bash
 # Install the WeChat bridge
@@ -102,7 +157,7 @@ npm install -g claude-wechat-channel
 claude --dangerously-load-development-channels server:wechat
 ```
 
-### 4. Claude.ai Chat Integration (optional)
+### 6. Claude.ai Chat Integration (optional)
 
 This is the key feature: **Claude.ai chat and Claude Code share the same memory database.** Memories saved in a chat conversation are searchable from Claude Code, and vice versa.
 
@@ -111,7 +166,7 @@ The memory MCP server supports two modes — local stdio (for Claude Code) and H
 #### Step 1: Start the HTTP memory server
 
 ```bash
-python3.12 memory_mcp.py --http
+python3 memory_mcp.py --http
 # Runs on localhost:8000
 ```
 
@@ -167,16 +222,16 @@ Adding the connector gives Claude.ai access to the tools, but it won't know *whe
 
 Once set up, the workflow is seamless: chat on Claude.ai during the day, switch to Claude Code for coding — same memories, no sync needed.
 
-### 5. Dashboard
+### 7. Dashboard
 
 ```bash
-python3.12 dashboard.py
+python3 dashboard.py
 # Open http://localhost:3000
 ```
 
 Manages all components from one page: start/stop services, browse memories, view scheduled tasks, interaction heatmap.
 
-### 6. Scheduled Tasks
+### 8. Scheduled Tasks
 
 Create persistent scheduled tasks through Claude Code:
 ```

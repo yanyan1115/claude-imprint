@@ -19,7 +19,7 @@ mkdir -p "$LOG_DIR"
 echo "$DATE $TIME PreCompact trigger=$TRIGGER session=$SESSION_ID" >> "$LOG_DIR/compaction.log"
 
 if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    python3.12 - "$TRANSCRIPT" "$DATE" "$TIME" "$TRIGGER" "$SCRIPT_DIR" << 'PYTHON_SCRIPT'
+    python3 - "$TRANSCRIPT" "$DATE" "$TIME" "$TRIGGER" "$SCRIPT_DIR" << 'PYTHON_SCRIPT'
 import sys
 import json
 from pathlib import Path

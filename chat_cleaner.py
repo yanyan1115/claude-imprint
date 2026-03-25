@@ -1,11 +1,11 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """
 Claude.ai Chat History Cleaner
 
 Usage:
   1. Export data from Claude.ai (Settings > Privacy > Export Data)
   2. Unzip the export, find conversations.json
-  3. Run: python3.12 chat_cleaner.py <path to conversations.json>
+  3. Run: python3 chat_cleaner.py <path to conversations.json>
 
 Features:
   - Parses conversations.json
@@ -175,9 +175,9 @@ def split_long_session(text: str, max_chars: int = MAX_CHARS, overlap: int = OVE
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3.12 chat_cleaner.py <path to conversations.json>")
+        print("Usage: python3 chat_cleaner.py <path to conversations.json>")
         print()
-        print("Example: python3.12 chat_cleaner.py ~/Downloads/claude-export/conversations.json")
+        print("Example: python3 chat_cleaner.py ~/Downloads/claude-export/conversations.json")
         sys.exit(1)
 
     input_path = sys.argv[1]

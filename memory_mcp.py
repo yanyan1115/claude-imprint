@@ -1,11 +1,11 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """
 Claude Imprint — Memory MCP Server (FastMCP)
 Exposes memory operations as MCP tools for all Claude Code sessions.
 
 Usage:
-  python3.12 memory_mcp.py           # stdio mode (for CC local use)
-  python3.12 memory_mcp.py --http    # HTTP mode (for Claude.ai via tunnel)
+  python3 memory_mcp.py           # stdio mode (for CC local use)
+  python3 memory_mcp.py --http    # HTTP mode (for Claude.ai via tunnel)
 """
 
 import sys

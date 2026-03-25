@@ -19,7 +19,7 @@ echo ""
 
 mkdir -p logs data
 
-nohup caffeinate -i python3.12 -u agent.py >> logs/agent.log 2>&1 &
+nohup caffeinate -i python3 -u agent.py >> logs/agent.log 2>&1 &
 echo $! > .pid
 
 echo "Agent started (PID: $(cat .pid))"
