@@ -247,7 +247,8 @@ def search(query: str, limit: int = 10, category: Optional[str] = None) -> list[
     # --- 1. FTS5 keyword search ---
     try:
         fts_query = query.replace('"', '""')
-        cat_filter = f"AND m.category = '{category}'" if category else ""
+        cat_filter = "AND m.category = ?" if category else ""
+        params = [fts_query, category] if category else [fts_query]
         fts_rows = db.execute(f"""
             SELECT m.id, m.content, m.category, m.source, m.importance,
                    m.created_at, m.recalled_count,
@@ -257,7 +258,7 @@ def search(query: str, limit: int = 10, category: Optional[str] = None) -> list[
             WHERE memories_fts MATCH ? {cat_filter}
             ORDER BY rank
             LIMIT {limit * 2}
-        """, (fts_query,)).fetchall()
+        """, params).fetchall()
 
         if fts_rows:
             max_rank = max(abs(r["rank"]) for r in fts_rows) or 1
@@ -281,7 +282,8 @@ def search(query: str, limit: int = 10, category: Optional[str] = None) -> list[
     # --- 2. Vector semantic search ---
     query_vec = _embed(query)
     if query_vec:
-        cat_filter = f"AND m.category = '{category}'" if category else ""
+        cat_filter = "AND m.category = ?" if category else ""
+        params = [category] if category else []
         vec_rows = db.execute(f"""
             SELECT m.id, m.content, m.category, m.source, m.importance,
                    m.created_at, m.recalled_count,
@@ -289,7 +291,7 @@ def search(query: str, limit: int = 10, category: Optional[str] = None) -> list[
             FROM memories m
             JOIN memory_vectors v ON m.id = v.memory_id
             WHERE 1=1 {cat_filter}
-        """).fetchall()
+        """, params).fetchall()
 
         scored = []
         for r in vec_rows:
@@ -382,8 +384,9 @@ def daily_log(text: str) -> str:
     now_time = _now_local().strftime("%H:%M")
     entry = f"- [{now_time}] {text}\n"
 
+    needs_header = not log_file.exists() or log_file.stat().st_size == 0
     with open(log_file, "a", encoding="utf-8") as f:
-        if not log_file.exists() or log_file.stat().st_size == 0:
+        if needs_header:
             f.write(f"# {today} Log\n\n")
         f.write(entry)
 
