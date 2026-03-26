@@ -425,6 +425,32 @@ Created automatically by the `memory_daily_log` tool and the pre-compaction hook
 4. Add your info to `memory/bank/preferences.md`
 5. The rest (MEMORY.md, daily logs) will populate automatically as you use the system
 
+## How It Compares to Dispatch (Official)
+
+[Dispatch](https://claude.com/blog/dispatch-and-computer-use) is Anthropic's official phone-to-desktop remote control, launched March 2026 as part of Cowork. It lets you assign tasks from the Claude mobile app to your desktop. Here's how it compares:
+
+| | Dispatch | Claude Imprint |
+|---|---|---|
+| **Interface** | Claude mobile app only, single persistent thread | Any Claude.ai chat window + Telegram + WeChat + CLI |
+| **Routes to** | Cowork (knowledge work) + Claude Code (dev tasks) | Claude Code only, but with custom MCP tools that cover most knowledge-work use cases |
+| **Memory** | Session memory (within the thread) | Persistent SQLite + vector search, survives across sessions and channels |
+| **Monitoring** | Desktop app shows live progress | Dashboard (localhost:3000) with task log, memory browser, heatmap |
+| **Channels** | Phone ↔ Desktop only | Multi-channel: Telegram, WeChat, Claude.ai, Claude Code — all sharing context |
+| **Customization** | None — standard Claude personality | Fully custom: personality, tools, notification rules, memory categories |
+| **Computer Use** | Screenshot + click loop (can control any app) | MCP tools + shell commands (faster, but no GUI control) |
+| **Scheduling** | Built-in scheduled tasks | Claude Code scheduled tasks + custom heartbeat agent |
+| **Setup** | Zero — built into Claude Desktop | Manual setup, but fully open-source and extensible |
+| **Platform** | macOS / Windows (no Linux) | macOS / Linux |
+| **Status** | Research preview (official, polished) | Community project (DIY, flexible) |
+
+**When to use Dispatch:** You want a polished, zero-setup mobile remote control that "just works" — especially if you need Cowork's connectors (Google Calendar, Slack, etc.) or GUI-level computer control.
+
+**When to use Claude Imprint:** You want persistent memory that survives across sessions, multi-channel access (not just phone app), a custom personality, or full control over how your AI assistant behaves. You're comfortable with self-hosting and want to extend the system yourself.
+
+**Can you use both?** Yes. They solve overlapping but different problems. Dispatch is great for quick phone-to-desktop tasks; Imprint is great for long-term memory, multi-channel presence, and customization.
+
+---
+
 ## How It Compares to OpenClaw
 
 OpenClaw is a mature, feature-rich project with a large plugin ecosystem. Claude Imprint takes a different approach — minimal, Claude Code-native, and fully local.
