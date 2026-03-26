@@ -187,7 +187,7 @@ def get_scheduled_tasks():
 
 
 def get_heatmap_data():
-    """Get interaction data for the past 120 days"""
+    """Get interaction data for the past 365 days"""
     from datetime import datetime, timezone, timedelta
     tz = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", 0))))
     today = datetime.now(tz).date()
@@ -215,9 +215,9 @@ def get_heatmap_data():
             if lines > 0:
                 data[d] = data.get(d, 0) + lines
 
-    # Assemble last 120 days
+    # Assemble last 365 days
     result = []
-    for i in range(119, -1, -1):
+    for i in range(364, -1, -1):
         d = (today - timedelta(days=i)).isoformat()
         result.append({"date": d, "count": data.get(d, 0)})
     return result
