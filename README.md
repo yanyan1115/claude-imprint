@@ -61,9 +61,9 @@ Built for **Claude Code Pro/Max subscribers** who want to unlock more from their
 ## Prerequisites
 
 - **Claude Code** (Pro or Max subscription recommended for heavy usage)
-- **Python 3.12+**
+- **Python 3.11+**
 - **macOS or Linux** — Core features (memory, MCP server, dashboard) work on both. Shell scripts (`start-all.sh`, `stop-all.sh`) use `osascript` to open Terminal windows on macOS; on Linux, replace with your terminal emulator or run each service manually.
-- **An always-on machine** — This is a local-first system. All services (memory server, Cloudflare Tunnel, heartbeat, scheduled tasks) run on your machine. If your computer sleeps or shuts down, they stop. For uninterrupted service, consider running on a Mac mini / home server, or disabling sleep (`caffeinate -s` on macOS).
+- **An always-on machine** — This is a local-first system. All services (memory server, Cloudflare Tunnel, heartbeat, scheduled tasks) run on your machine. If your computer sleeps or shuts down, they stop. For uninterrupted service, consider running on a Mac mini / home server, or disabling sleep (`caffeinate -s` on macOS). `start.sh` will use `caffeinate` automatically when available, and falls back to a normal background process on Linux.
 
 Optional (install only what you need):
 - **Telegram Bot** — for Telegram channel
@@ -102,8 +102,7 @@ After running Quick Start, you have the memory system working locally. Choose wh
 |---|---|
 | Just have persistent memory in Claude Code | ✅ Already done (Quick Start) |
 | Connect Claude.ai chat to the same memory | → [Module A: Chat Integration](#module-a-chat-integration) |
-| Talk to Claude from Telegram | → [Module B: Telegram](#module-b-telegram) |
-| Talk to Claude from WeChat | → [Module C: WeChat](#module-c-wechat) |
+| Talk to Claude from my phone | → [Module B: Telegram](#module-b-telegram) or [Module C: WeChat](#module-c-wechat) (pick one or both) |
 | Let Claude.ai control my computer | → [Module A](#module-a-chat-integration) (includes `cc_execute`) |
 | Automated heartbeat / reminders | → [Module D: Automation](#module-d-automation) |
 | Dashboard to manage everything | → [Module E: Dashboard](#module-e-dashboard) |
@@ -282,7 +281,7 @@ claude --permission-mode auto --dangerously-load-development-channels server:wec
 
 **What you get:** Heartbeat agent (periodic checks + proactive notifications), scheduled tasks (morning briefing, reminders).
 
-**You need:** Telegram set up (Module B) for notifications.
+**You need:** At least one chat channel set up ([Module B: Telegram](#module-b-telegram) or [Module C: WeChat](#module-c-wechat)) for notifications.
 
 ```bash
 # Start heartbeat agent
