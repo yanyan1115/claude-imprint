@@ -231,7 +231,23 @@ python3 dashboard.py
 
 Manages all components from one page: start/stop services, browse memories, view scheduled tasks, interaction heatmap.
 
-### 8. Scheduled Tasks
+### 8. Heartbeat Agent (optional)
+
+The heartbeat agent periodically wakes up Claude Code to perform automated checks (calendar, reminders, proactive notifications).
+
+```bash
+# Start the agent
+python3 agent.py
+
+# Or with a custom interval (default: 15 minutes)
+HEARTBEAT_INTERVAL=300 python3 agent.py   # 5-minute interval for testing
+```
+
+The agent reads `SOUL.md` (personality) and `HEARTBEAT.md` (checklist) to know what to check and how to behave. Edit these files to customize its behavior.
+
+> **Tip:** Use `start-all.sh` to launch the heartbeat agent alongside other services, or `start.sh` to run just the agent.
+
+### 9. Scheduled Tasks
 
 Create persistent scheduled tasks through Claude Code:
 ```
@@ -239,6 +255,25 @@ Create persistent scheduled tasks through Claude Code:
 ```
 
 Tasks survive restarts and are stored in `~/.claude/scheduled-tasks/`.
+
+### 10. Import Chat History (optional)
+
+Already have months of conversations on Claude.ai? You can import them into the memory system so Claude remembers everything from day one.
+
+```bash
+# 1. Export from Claude.ai: Settings → Privacy → Export Data
+# 2. Unzip the export, find conversations.json
+# 3. Run the cleaner to split into manageable sessions
+python3 chat_cleaner.py ~/Downloads/claude-export/conversations.json
+```
+
+This splits your conversations into session files (in `chat_sessions/`), broken by 6-hour silence gaps. Long sessions are further split with overlap to preserve context.
+
+Then feed each session to Claude Code for memory extraction:
+```bash
+# For each session file, ask Claude Code to read and remember the important parts
+claude "Read chat_sessions/session_001.txt and save any important facts, preferences, or events to memory using memory_remember"
+```
 
 ## Configuration
 
@@ -347,7 +382,7 @@ OpenClaw is a mature, feature-rich project with a large plugin ecosystem. Claude
 
 ## Acknowledgements
 
-- [OpenClaw](https://github.com/openclaw/openclaw) — The personal AI assistant framework that inspired this project
+- [OpenClaw](https://github.com/openclaw/openclaw) — Multi-model personal AI assistant framework that inspired this project
 - [Anthropic](https://anthropic.com) — Claude Code, MCP protocol, and the Telegram plugin
 - [FastMCP](https://github.com/jlowin/fastmcp) / [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) — MCP server framework
 - [claude-wechat-channel](https://www.npmjs.com/package/claude-wechat-channel) — WeChat bridge for Claude Code
