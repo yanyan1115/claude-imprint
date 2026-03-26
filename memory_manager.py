@@ -621,6 +621,11 @@ def _index_bank_files():
             chunk = chunk.strip()
             if len(chunk) < 10:
                 continue
+            # Skip chunks that are purely template comments (HTML comments, examples)
+            lines = [l for l in chunk.split("\n") if l.strip()]
+            non_template = [l for l in lines if not l.strip().startswith("<!--") and not l.strip().endswith("-->") and not l.strip().startswith("# ")]
+            if not non_template:
+                continue
             vec = _embed(chunk)
             blob = _vec_to_blob(vec) if vec else None
             db.execute(

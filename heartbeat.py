@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from memory_manager import get_context, record_notification, was_notified, MEMORY_INDEX, LOCAL_TZ
+from memory_manager import get_context, record_notification, MEMORY_INDEX, LOCAL_TZ
 
 PROJECT_DIR = Path(__file__).parent
 GLOBAL_CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"

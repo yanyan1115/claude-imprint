@@ -14,13 +14,13 @@ fi
 echo "Starting Claude Imprint Agent..."
 echo "   Heartbeat interval: ${HEARTBEAT_INTERVAL:-900}s"
 echo "   Logs: ./logs/agent.log"
-echo "   Stop: ./stop.sh or kill \$(cat .pid)"
+echo "   Stop: ./stop.sh or kill \$(cat .pid-heartbeat)"
 echo ""
 
 mkdir -p logs data
 
 nohup caffeinate -i python3 -u agent.py >> logs/agent.log 2>&1 &
-echo $! > .pid
+echo $! > .pid-heartbeat
 
-echo "Agent started (PID: $(cat .pid))"
+echo "Agent started (PID: $(cat .pid-heartbeat))"
 echo "   View logs: tail -f logs/agent.log"

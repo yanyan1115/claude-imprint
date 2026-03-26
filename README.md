@@ -363,8 +363,8 @@ claude-imprint/
 ├── MEMORY.md            # Auto-generated memory index
 ├── start-all.sh         # Start all services (macOS Terminal)
 ├── stop-all.sh          # Stop all services
-├── start.sh             # Start core services (memory HTTP + tunnel)
-├── stop.sh              # Stop core services
+├── start.sh             # Start heartbeat agent (with caffeinate)
+├── stop.sh              # Stop heartbeat agent
 └── requirements.txt
 ```
 

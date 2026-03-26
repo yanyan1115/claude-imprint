@@ -3,14 +3,14 @@
 
 cd "$(dirname "$0")"
 
-if [ -f .pid ]; then
-    PID=$(cat .pid)
+if [ -f .pid-heartbeat ]; then
+    PID=$(cat .pid-heartbeat)
     if kill -0 "$PID" 2>/dev/null; then
         kill "$PID"
-        rm .pid
+        rm .pid-heartbeat
         echo "Agent stopped (PID: $PID)"
     else
-        rm .pid
+        rm .pid-heartbeat
         echo "Process already gone, cleaned up PID file"
     fi
 else

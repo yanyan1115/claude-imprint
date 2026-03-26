@@ -65,17 +65,17 @@ try:
     if messages:
         summary_msgs = messages[-10:]
         summary = "\n".join(summary_msgs)
-        daily_log(f"[{time_str}] Compaction ({trigger}). Recent conversation:\n{summary}")
+        daily_log(f"Compaction ({trigger}). Recent conversation:\n{summary}")
         print(f"Extracted {len(summary_msgs)} messages to log", file=sys.stderr)
     else:
-        daily_log(f"[{time_str}] Compaction ({trigger}). No extractable content.")
+        daily_log(f"Compaction ({trigger}). No extractable content.")
         print("No extractable messages", file=sys.stderr)
 
 except Exception as e:
     print(f"Memory extraction failed: {e}", file=sys.stderr)
     try:
         from memory_manager import daily_log
-        daily_log(f"[{time_str}] Compaction ({trigger}). Extraction failed: {e}")
+        daily_log(f"Compaction ({trigger}). Extraction failed: {e}")
     except:
         pass
 PYTHON_SCRIPT

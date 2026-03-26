@@ -111,28 +111,11 @@ def get_terminal_status(comp):
 
 
 def get_tunnel_url():
-    """Return tunnel URL if running"""
+    """Return tunnel status string if running"""
     status = get_pid_status(COMPONENTS["tunnel"])
     if status["running"]:
-        return "https://your-domain.example.com"
+        return "Active"
     return None
-
-
-def get_claude_auth():
-    """Check Claude Code auth status"""
-    try:
-        result = subprocess.run(
-            ["claude", "auth", "status"],
-            capture_output=True, text=True, timeout=10
-        )
-        output = result.stdout + result.stderr
-        if "expired" in output.lower():
-            return "expired"
-        if "authenticated" in output.lower() or "logged in" in output.lower():
-            return "ok"
-        return "unknown"
-    except Exception:
-        return "unknown"
 
 
 def get_memory_stats():
@@ -369,6 +352,24 @@ async def api_update_memory(memory_id: int, request: Request):
     # Delete old vector embedding (content changed, old embedding is stale)
     conn.execute("DELETE FROM memory_vectors WHERE memory_id = ?", (memory_id,))
     conn.commit()
+
+    # Regenerate embedding for updated content
+    try:
+        from memory_manager import _embed, _vec_to_blob, EMBED_MODEL
+        vec = _embed(content)
+        if vec:
+            conn.execute(
+                "INSERT INTO memory_vectors (memory_id, embedding, model) VALUES (?, ?, ?)",
+                (memory_id, _vec_to_blob(vec), EMBED_MODEL),
+            )
+            conn.commit()
+        else:
+            import logging
+            logging.warning(f"Could not regenerate embedding for memory {memory_id}: Ollama may not be running")
+    except Exception as e:
+        import logging
+        logging.warning(f"Failed to regenerate embedding for memory {memory_id}: {e}")
+
     conn.close()
     return {"ok": True}
 
@@ -794,7 +795,6 @@ async def dashboard():
 
 <div class="header">
   <h1>✨ Claude Imprint</h1>
-  <div class="subtitle" id="auth-status">Loading...</div>
   <button class="lang-btn" onclick="toggleLang()" title="Switch language">🌐 <span id="lang-label">中文</span></button>
 </div>
 

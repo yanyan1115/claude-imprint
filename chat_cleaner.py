@@ -85,6 +85,9 @@ def parse_conversations(path: str) -> list[dict]:
                                     break
                                 except Exception:
                                     continue
+                    # Normalize to naive datetime to avoid mixing aware/naive
+                    if ts is not None and ts.tzinfo is not None:
+                        ts = ts.replace(tzinfo=None)
                 except Exception:
                     pass
 
