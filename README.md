@@ -1,6 +1,6 @@
 # Claude Imprint
 
-### One Claude. Unified memory. Every channel.
+### One Claude. Unified memory. Every channel. Your personal assistant that lives across all your devices.
 
 A self-hosted system that gives Claude persistent memory and connects it across Claude Code, Claude.ai, Telegram, and WeChat. Talk to it from your terminal, your browser, or your phone — it remembers everything, shares context across channels, writes code on your machine from anywhere, and manages your day. All data stays local.
 
