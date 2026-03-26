@@ -852,13 +852,14 @@ function renderHeatmap(days) {
 
   const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-  let html = '<div class="heatmap-months" style="padding-left:32px;display:flex;gap:3px;">';
+  const totalGridWidth = weeks.length * 15 - 3;
+  let html = '<div class="heatmap-months" style="padding-left:32px;display:flex;width:' + totalGridWidth + 'px;">';
   // Position month labels
   let monthHtml = '';
   months.forEach((m, i) => {
     const next = months[i + 1] ? months[i + 1].index : weeks.length;
     const span = next - m.index;
-    monthHtml += '<span style="width:' + (span * 15 - 3) + 'px;flex-shrink:0">' + m.label + '</span>';
+    monthHtml += '<span style="width:' + (span * 15) + 'px;flex-shrink:0">' + m.label + '</span>';
   });
   html += monthHtml + '</div>';
 
