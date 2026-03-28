@@ -14,10 +14,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 import psutil
 import uvicorn
-import memory_manager as mem
+import sys
+
+from imprint_memory import memory_manager as mem
 
 app = FastAPI(title="Claude Imprint")
-BASE = Path(__file__).parent
+BASE = Path(__file__).parent.parent.parent  # packages/imprint_dashboard -> project root
 LOGS = BASE / "logs"
 LOGS.mkdir(exist_ok=True)
 
@@ -27,7 +29,7 @@ COMPONENTS = {
     "memory_http": {
         "name": "🧠 Memory HTTP",
         "pid_file": ".pid-http",
-        "start_cmd": ["python3", str(BASE / "memory_mcp.py"), "--http"],
+        "start_cmd": ["imprint-memory", "--http"],
         "log_file": "logs/http.log",
         "type": "background",
         "check_port": 8000,

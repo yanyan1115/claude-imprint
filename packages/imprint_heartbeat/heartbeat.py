@@ -9,18 +9,35 @@ import asyncio
 import json
 import os
 import signal
+import shutil
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from memory_manager import get_context, record_notification, MEMORY_INDEX, LOCAL_TZ
+# ─── Config ──────────────────────────────────────────────
 
-PROJECT_DIR = Path(__file__).parent
+TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
+LOCAL_TZ = timezone(timedelta(hours=TZ_OFFSET))
+
+PACKAGE_DIR = Path(__file__).parent
+PROJECT_DIR = PACKAGE_DIR.parent.parent  # packages/imprint_heartbeat -> project root
+
 GLOBAL_CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
-SOUL_FILE = PROJECT_DIR / "SOUL.md"
-HEARTBEAT_FILE = PROJECT_DIR / "HEARTBEAT.md"
-import shutil
+SOUL_FILE = PACKAGE_DIR / "SOUL.md"
+HEARTBEAT_FILE = PACKAGE_DIR / "HEARTBEAT.md"
+MEMORY_INDEX = PROJECT_DIR / "MEMORY.md"
+
 CLAUDE_BIN = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+
+HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", 900))
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+QUIET_START = int(os.environ.get("QUIET_START", 23))
+QUIET_END = int(os.environ.get("QUIET_END", 7))
+
+HEARTBEAT_SESSION_FILE = PROJECT_DIR / "data" / "heartbeat_session.txt"
+
+# Paths to MCP server entry points
+TELEGRAM_SERVER = PROJECT_DIR / "packages" / "imprint_telegram" / "server.py"
 
 
 def _get_telegram_plugin_dir() -> Path:
@@ -30,19 +47,7 @@ def _get_telegram_plugin_dir() -> Path:
         versions = sorted(base.iterdir(), reverse=True)
         if versions:
             return versions[0]
-    return base / "0.0.1"  # fallback
-
-# Heartbeat interval in seconds. Default 15 minutes.
-HEARTBEAT_INTERVAL = int(os.environ.get("HEARTBEAT_INTERVAL", 900))
-
-# Telegram chat_id — set via environment variable
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
-
-# Quiet hours (no proactive messages)
-QUIET_START = int(os.environ.get("QUIET_START", 23))
-QUIET_END = int(os.environ.get("QUIET_END", 7))
-
-HEARTBEAT_SESSION_FILE = PROJECT_DIR / "data" / "heartbeat_session.txt"
+    return base / "0.0.1"
 
 
 def now_local():
@@ -70,7 +75,7 @@ def build_heartbeat_prompt() -> str:
     claude_md = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8") if GLOBAL_CLAUDE_MD.exists() else ""
     soul = SOUL_FILE.read_text(encoding="utf-8") if SOUL_FILE.exists() else ""
     heartbeat_md = HEARTBEAT_FILE.read_text(encoding="utf-8") if HEARTBEAT_FILE.exists() else ""
-    memory_ctx = MEMORY_INDEX.read_text(encoding="utf-8") if MEMORY_INDEX.exists() else get_context()
+    memory_ctx = MEMORY_INDEX.read_text(encoding="utf-8") if MEMORY_INDEX.exists() else "(No memory index)"
     current_time = now_local().strftime("%Y-%m-%d %H:%M (%A)")
     quiet = is_quiet_hours()
 
@@ -118,7 +123,8 @@ async def run_heartbeat():
     if session_id:
         cmd.extend(["--resume", session_id])
 
-    mcp_config = json.dumps({"mcpServers": {
+    # Build MCP config with modular servers
+    mcp_servers = {
         "telegram": {
             "command": "bun",
             "args": ["run", "--cwd",
@@ -126,12 +132,19 @@ async def run_heartbeat():
                      "--shell=bun", "--silent", "start"]
         },
         "imprint-memory": {
+            "command": "imprint-memory",
+            "args": []
+        },
+    }
+    # Add telegram send server if available
+    if TELEGRAM_SERVER.exists():
+        mcp_servers["imprint-telegram"] = {
             "command": "python3",
-            "args": [str(PROJECT_DIR / "memory_mcp.py")]
+            "args": [str(TELEGRAM_SERVER)]
         }
-    }})
+
+    mcp_config = json.dumps({"mcpServers": mcp_servers})
     cmd.extend(["--mcp-config", mcp_config])
-    # Auto mode: AI classifier approves safe actions, blocks risky ones
     cmd.extend(["--permission-mode", "auto"])
 
     env = {**os.environ}
@@ -143,6 +156,7 @@ async def run_heartbeat():
     ts = now_local().strftime('%H:%M:%S')
     print(f"[{ts}] Heartbeat starting...")
 
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -175,7 +189,6 @@ async def run_heartbeat():
                 print(f"[{ts}] Heartbeat OK")
             else:
                 print(f"[{ts}] Heartbeat: action taken")
-                record_notification(f"heartbeat: {response_text[:100]}")
         except json.JSONDecodeError:
             if "HEARTBEAT_OK" in output:
                 print(f"[{ts}] Heartbeat OK")

@@ -4,32 +4,42 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import memory_manager as mem
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from imprint_memory import memory_manager as mem
+from imprint_memory.db import DB_PATH as _orig_db_path
 from chat_cleaner import parse_conversations, split_by_gap
 
+
+from imprint_memory import db as db_mod
 
 class MemoryManagerReleaseTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
 
-        self.old_db = mem.DB_PATH
-        self.old_index = mem.MEMORY_INDEX
-        self.old_bank_dir = mem.BANK_DIR
+        self.old_db = db_mod.DB_PATH
+        self.old_index = db_mod.MEMORY_INDEX
+        self.old_bank_dir = db_mod.BANK_DIR
         self.old_embed = mem._embed
 
-        mem.DB_PATH = self.root / "memory.db"
+        db_mod.DB_PATH = self.root / "memory.db"
+        db_mod.MEMORY_INDEX = self.root / "MEMORY.md"
         mem.MEMORY_INDEX = self.root / "MEMORY.md"
+        db_mod.BANK_DIR = self.root / "bank"
         mem.BANK_DIR = self.root / "bank"
         mem.BANK_DIR.mkdir(parents=True, exist_ok=True)
         mem._embed = lambda text: None
 
-        db = mem._get_db()
+        db = db_mod._get_db()
         db.close()
 
     def tearDown(self):
-        mem.DB_PATH = self.old_db
+        db_mod.DB_PATH = self.old_db
+        db_mod.MEMORY_INDEX = self.old_index
         mem.MEMORY_INDEX = self.old_index
+        db_mod.BANK_DIR = self.old_bank_dir
         mem.BANK_DIR = self.old_bank_dir
         mem._embed = self.old_embed
         self.temp_dir.cleanup()
@@ -50,7 +60,7 @@ class MemoryManagerReleaseTests(unittest.TestCase):
         bank_file = mem.BANK_DIR / "preferences.md"
         bank_file.write_text("# Preferences\n\n<!-- template only -->\n", encoding="utf-8")
 
-        db = mem._get_db()
+        db = db_mod._get_db()
         db.execute(
             """INSERT INTO bank_chunks
                (file_path, chunk_text, embedding, file_mtime, index_version)
@@ -62,7 +72,7 @@ class MemoryManagerReleaseTests(unittest.TestCase):
 
         mem._index_bank_files()
 
-        con = sqlite3.connect(str(mem.DB_PATH))
+        con = sqlite3.connect(str(db_mod.DB_PATH))
         try:
             rows = con.execute("SELECT file_path, chunk_text, index_version FROM bank_chunks").fetchall()
         finally:

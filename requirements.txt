@@ -1,5 +1,10 @@
-fastapi>=0.115.0
+# Core memory system
+imprint-memory @ git+https://github.com/Qizhan7/imprint-memory.git
+
+# HTTP mode (imprint-memory --http) + Dashboard
 uvicorn>=0.34.0
+starlette>=0.27.0
+fastapi>=0.115.0
+
+# System status (imprint-utils)
 psutil>=6.0.0
-pyyaml>=6.0
-mcp>=1.0.0

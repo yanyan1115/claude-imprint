@@ -30,10 +30,10 @@ time_str = sys.argv[3]
 trigger = sys.argv[4]
 project_dir = sys.argv[5]
 
-sys.path.insert(0, project_dir)
+# imprint-memory installed via pip
 
 try:
-    from memory_manager import remember, daily_log
+    from imprint_memory.memory_manager import remember, daily_log
 
     lines = []
     with open(transcript_path, 'r', encoding='utf-8') as f:
@@ -74,7 +74,7 @@ try:
 except Exception as e:
     print(f"Memory extraction failed: {e}", file=sys.stderr)
     try:
-        from memory_manager import daily_log
+        from imprint_memory.memory_manager import daily_log
         daily_log(f"Compaction ({trigger}). Extraction failed: {e}")
     except:
         pass

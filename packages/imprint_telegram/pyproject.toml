@@ -1,0 +1,8 @@
+[project]
+name = "imprint-telegram"
+version = "0.1.0"
+description = "Telegram messaging tools for Claude Imprint"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+]

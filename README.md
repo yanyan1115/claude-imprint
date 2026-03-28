@@ -81,18 +81,18 @@ cd claude-imprint
 # (Recommended) Create a virtual environment
 python3 -m venv .venv && source .venv/bin/activate
 
-# Install dependencies
+# Install dependencies (includes imprint-memory from GitHub)
 pip install -r requirements.txt
 
 # Register the memory MCP server (user-level, available in all CC sessions)
-claude mcp add -s user imprint-memory -- python3 $(pwd)/memory_mcp.py
+claude mcp add -s user imprint-memory -- imprint-memory
 
 # Start the dashboard
-python3 dashboard.py
+python3 packages/imprint_dashboard/dashboard.py
 # → http://localhost:3000
 ```
 
-> **Note:** This guide uses `python3` throughout. If you have multiple Python versions, replace with `python3` or whichever version you have (3.11+ required).
+> **Note:** The core memory system ([imprint-memory](https://github.com/Qizhan7/imprint-memory)) is installed as a standalone package. It can also be used independently outside of Claude Imprint.
 
 ## Setup Guide — Pick What You Need
 
@@ -172,7 +172,7 @@ export WEATHER_LON="-74.01"   # your longitude
 export WEATHER_TZ="America/New_York"
 
 # Start
-python3 memory_mcp.py --http
+imprint-memory --http
 # Runs on localhost:8000
 ```
 
@@ -285,10 +285,10 @@ claude --permission-mode auto --dangerously-load-development-channels server:wec
 
 ```bash
 # Start heartbeat agent
-python3 agent.py
+python3 packages/imprint_heartbeat/agent.py
 
 # Or with custom interval
-HEARTBEAT_INTERVAL=300 python3 agent.py   # 5-min for testing
+HEARTBEAT_INTERVAL=300 python3 packages/imprint_heartbeat/agent.py   # 5-min for testing
 ```
 
 Edit `SOUL.md` (personality) and `HEARTBEAT.md` (checklist) to customize behavior.
@@ -316,7 +316,7 @@ Tasks persist in `~/.claude/scheduled-tasks/` and survive restarts.
 - **Language Toggle** — Switch between English and Chinese (🌐 button, top right). Preference is saved in localStorage.
 
 ```bash
-python3 dashboard.py
+python3 packages/imprint_dashboard/dashboard.py
 # → http://localhost:3000
 ```
 
@@ -357,25 +357,26 @@ claude "Read chat_sessions/session_001.txt and save important facts to memory us
 
 ```
 claude-imprint/
-├── memory_manager.py    # Core memory module (SQLite + vectors + FTS5)
-├── memory_mcp.py        # MCP server (stdio + HTTP modes)
-├── dashboard.py         # Single-file dashboard (FastAPI + inline HTML)
-├── heartbeat.py         # Heartbeat agent module
-├── agent.py             # Agent entry point
-├── chat_cleaner.py      # Import old Claude.ai conversations
+├── packages/
+│   ├── imprint_telegram/     # Telegram send/photo MCP server
+│   ├── imprint_wechat/       # WeChat send/read MCP server
+│   ├── imprint_utils/        # System status, webpage reader, Spotify
+│   ├── imprint_heartbeat/    # Heartbeat agent + personality files
+│   └── imprint_dashboard/    # Single-file dashboard (FastAPI)
+├── skills/
+│   ├── morning-briefing.md   # Morning briefing skill
+│   └── setup-memory.md       # Memory system setup guide
 ├── hooks/
 │   └── pre-compact-flush.sh  # Pre-compaction memory saver
-├── memory/              # Daily logs (YYYY-MM-DD.md)
-│   └── bank/            # Structured knowledge files
-├── SOUL.md              # Heartbeat personality rules
-├── HEARTBEAT.md         # Heartbeat checklist
-├── MEMORY.md            # Auto-generated memory index
-├── start-all.sh         # Start all services (macOS Terminal)
-├── stop-all.sh          # Stop all services
-├── start.sh             # Start heartbeat agent (with caffeinate)
-├── stop.sh              # Stop heartbeat agent
-└── requirements.txt
+├── chat_cleaner.py           # Import old Claude.ai conversations
+├── memory/                   # Daily logs + bank files
+│   └── bank/                 # Structured knowledge files
+├── start-all.sh              # Start all services
+├── stop-all.sh               # Stop all services
+└── requirements.txt          # Installs imprint-memory + other deps
 ```
+
+The core memory system lives in a separate repository: [imprint-memory](https://github.com/Qizhan7/imprint-memory). It is installed as a pip dependency via `requirements.txt`.
 
 ## Customization: The .md Files
 

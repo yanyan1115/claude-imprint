@@ -1,0 +1,9 @@
+[project]
+name = "imprint-utils"
+version = "0.1.0"
+description = "Utility tools for Claude Imprint: system status, web reading, Spotify"
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0.0",
+    "psutil>=6.0.0",
+]
