@@ -1,7 +1,13 @@
 # Heartbeat Checklist
 
+## Behavior Rules
+- Check the checklist below, execute items as needed
+- If nothing to do, return HEARTBEAT_OK
+- Send notifications via Telegram to your configured chat_id
+- Respect quiet hours (configurable, default 23:00-07:00) — no messages unless urgent
+- Keep messages concise — don't over-explain
+
 When the heartbeat agent wakes up, check the following items in order.
-If nothing to do, return HEARTBEAT_OK — don't send unnecessary notifications.
 
 ## Morning Briefing (07:00-09:00 in your timezone)
 If current time is between 07:00-09:00 and no morning message sent today,

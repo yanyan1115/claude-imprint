@@ -23,7 +23,6 @@ PACKAGE_DIR = Path(__file__).parent
 PROJECT_DIR = PACKAGE_DIR.parent.parent  # packages/imprint_heartbeat -> project root
 
 GLOBAL_CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
-SOUL_FILE = PACKAGE_DIR / "SOUL.md"
 HEARTBEAT_FILE = PACKAGE_DIR / "HEARTBEAT.md"
 MEMORY_INDEX = PROJECT_DIR / "MEMORY.md"
 
@@ -73,7 +72,6 @@ def save_session_id(sid: str):
 def build_heartbeat_prompt() -> str:
     """Build heartbeat prompt with personality + rules + memory + checklist"""
     claude_md = GLOBAL_CLAUDE_MD.read_text(encoding="utf-8") if GLOBAL_CLAUDE_MD.exists() else ""
-    soul = SOUL_FILE.read_text(encoding="utf-8") if SOUL_FILE.exists() else ""
     heartbeat_md = HEARTBEAT_FILE.read_text(encoding="utf-8") if HEARTBEAT_FILE.exists() else ""
     memory_ctx = MEMORY_INDEX.read_text(encoding="utf-8") if MEMORY_INDEX.exists() else "(No memory index)"
     current_time = now_local().strftime("%Y-%m-%d %H:%M (%A)")
@@ -86,9 +84,6 @@ Current time: {current_time}
 
 ## Identity and Rules
 {claude_md}
-
-## Heartbeat Rules
-{soul}
 
 ## Memory
 {memory_ctx}

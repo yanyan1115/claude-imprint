@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """
 Auto-update CLAUDE.md with recent memories and experience.
 Designed to run as a scheduled task (e.g., daily after nightly consolidation).
@@ -17,7 +17,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # --- Config ---
-TZ_OFFSET = 12  # NZST
+import os
+TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
 LOCAL_TZ = timezone(timedelta(hours=TZ_OFFSET))
 PROJECT_DIR = Path(__file__).parent
 DB_PATH = PROJECT_DIR / "memory.db"
@@ -135,7 +136,8 @@ def get_recent_daily_logs():
 
 def build_auto_section():
     """Build the AUTO section content."""
-    now_str = _now().strftime("%Y-%m-%d %H:%M NZST")
+    tz_label = f"UTC{'+' if TZ_OFFSET >= 0 else ''}{TZ_OFFSET}"
+    now_str = _now().strftime(f"%Y-%m-%d %H:%M {tz_label}")
     parts = [
         AUTO_MARKER_START,
         f"最后更新：{now_str}\n",

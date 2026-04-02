@@ -291,7 +291,7 @@ python3 packages/imprint_heartbeat/agent.py
 HEARTBEAT_INTERVAL=300 python3 packages/imprint_heartbeat/agent.py   # 5-min for testing
 ```
 
-Edit `SOUL.md` (personality) and `HEARTBEAT.md` (checklist) to customize behavior.
+Edit `HEARTBEAT.md` (behavior rules + checklist) to customize heartbeat behavior.
 
 **Scheduled tasks** — ask Claude Code directly:
 ```
@@ -422,8 +422,7 @@ Claude Imprint uses a set of Markdown files that work together to give Claude it
 ```
 ~/.claude/CLAUDE.md          ← You write this. The brain.
     │
-    ├── references ──→  SOUL.md         ← You write this. Lightweight personality summary.
-    ├── references ──→  HEARTBEAT.md    ← You write this. What to check and when to notify.
+    ├── references ──→  HEARTBEAT.md    ← You write this. Behavior rules + checklist.
     └── references ──→  MEMORY.md       ← Auto-generated. Don't edit.
                          memory/bank/   ← You write these. Structured knowledge.
 ```
@@ -435,15 +434,14 @@ This is the most important file. Claude Code reads it at the start of every sess
 - Who you are, your preferences, your timezone
 - Claude's personality and communication style
 - Rules for when to remember, when to notify, when to stay quiet
+- Heartbeat behavior rules (quiet hours, notification preferences)
 - Technical preferences and project guidelines
+
+See `examples/CLAUDE.md.example` for a full starting template.
 
 This file lives in `~/.claude/` (not in the project directory) so it applies across all Claude Code sessions.
 
-### `SOUL.md` — Heartbeat personality (you write this)
-
-A lightweight subset of your CLAUDE.md, injected into heartbeat sessions. Heartbeat runs in its own session with limited context, so it needs a compact version of the personality rules. Keep it short — just behavior rules and notification preferences.
-
-### `HEARTBEAT.md` — Heartbeat checklist (you write this)
+### `HEARTBEAT.md` — Heartbeat behavior + checklist (you write this)
 
 Defines what the heartbeat agent checks on each wake-up: morning briefing, routine monitors, notification channels, quiet hours. Edit this to add your own automated checks.
 
@@ -467,11 +465,10 @@ Created automatically by the `memory_daily_log` tool and the pre-compaction hook
 
 ### Getting Started
 
-1. Copy the example files in this repo as a starting point
-2. Write your `~/.claude/CLAUDE.md` — this is where you define who Claude is to you
-3. Edit `SOUL.md` and `HEARTBEAT.md` to match your preferences
-4. Add your info to `memory/bank/preferences.md`
-5. The rest (MEMORY.md, daily logs) will populate automatically as you use the system
+1. Copy `examples/CLAUDE.md.example` to `~/.claude/CLAUDE.md` and fill in your info
+2. Edit `HEARTBEAT.md` to match your notification preferences
+3. Add your info to `memory/bank/preferences.md`
+4. The rest (MEMORY.md, daily logs) will populate automatically as you use the system
 
 ## How It Compares to Dispatch (Official)
 

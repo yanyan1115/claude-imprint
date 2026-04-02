@@ -26,8 +26,8 @@ mkdir -p "$LOG_DIR"
 LOGFILE="$LOG_DIR/cron-${TASK_NAME}.log"
 
 # ─── Timestamp ───
-TS=$(TZ=Pacific/Auckland date +"%Y-%m-%d %H:%M")
-TS_SHORT=$(TZ=Pacific/Auckland date +"%m-%d %H:%M")
+TS=$(date +"%Y-%m-%d %H:%M")
+TS_SHORT=$(date +"%m-%d %H:%M")
 
 echo "[$TS] === $TASK_NAME start ===" >> "$LOGFILE"
 
@@ -64,7 +64,7 @@ if [ -n "$SENT_MSG" ]; then
 
     # Write to conversation_log DB (source of truth — Stop hook rebuilds recent_context from this)
     DB_FILE="$PROJECT_DIR/memory.db"
-    DB_TS=$(TZ=Pacific/Auckland date +"%Y-%m-%d %H:%M:%S")
+    DB_TS=$(date +"%Y-%m-%d %H:%M:%S")
     sqlite3 "$DB_FILE" "INSERT INTO conversation_log (platform, direction, speaker, content, session_id, entrypoint, created_at, summary) VALUES ('telegram', 'out', 'Agent', '${DISPLAY//\'/\'\'}', 'cron-${TASK_NAME}', 'cron', '${DB_TS}', '');" 2>> "$LOGFILE" || true
 
     # Also append to recent_context.md directly (in case Stop hook hasn't run yet)
@@ -75,6 +75,6 @@ fi
 
 # Sync recent_context.md → CLAUDE.md AUTO section
 # So telegram channel and other windows see the latest context
-python3.12 "$PROJECT_DIR/update_claude_md.py" >> "$LOGFILE" 2>&1 || true
+python3 "$PROJECT_DIR/update_claude_md.py" >> "$LOGFILE" 2>&1 || true
 
 echo "[$TS] === $TASK_NAME done ===" >> "$LOGFILE"
