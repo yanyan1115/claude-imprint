@@ -20,6 +20,7 @@ from imprint_memory import memory_manager as mem
 
 app = FastAPI(title="Claude Imprint")
 BASE = Path(__file__).parent.parent.parent  # packages/imprint_dashboard -> project root
+DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(BASE)))
 LOGS = BASE / "logs"
 LOGS.mkdir(exist_ok=True)
 
@@ -124,7 +125,7 @@ def get_tunnel_url():
 
 def get_memory_stats():
     """Get memory stats"""
-    db_path = BASE / "memory.db"
+    db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
         return {"count": 0, "today_logs": 0}
     try:
@@ -181,7 +182,7 @@ def get_heatmap_data():
     data = {}
 
     # Count memories per day from memory.db
-    db_path = BASE / "memory.db"
+    db_path = DATA_DIR / "memory.db"
     if db_path.exists():
         import sqlite3
         conn = sqlite3.connect(str(db_path))
@@ -329,7 +330,7 @@ async def api_heatmap():
 @app.get("/api/memories")
 async def api_memories(q: str = "", limit: int = 20):
     """Search or list memories"""
-    db_path = BASE / "memory.db"
+    db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
         return {"memories": []}
     import sqlite3
@@ -375,7 +376,7 @@ async def api_update_memory(memory_id: int, request: Request):
 @app.get("/api/remote-tools")
 async def api_remote_tools():
     """Get remote tool call log (cc_tasks etc.)"""
-    db_path = BASE / "memory.db"
+    db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
         return {"tasks": []}
     import sqlite3

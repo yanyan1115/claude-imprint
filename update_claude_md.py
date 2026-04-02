@@ -21,10 +21,11 @@ import os
 TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
 LOCAL_TZ = timezone(timedelta(hours=TZ_OFFSET))
 PROJECT_DIR = Path(__file__).parent
-DB_PATH = PROJECT_DIR / "memory.db"
+DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(PROJECT_DIR)))
+DB_PATH = DATA_DIR / "memory.db"
 CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
-EXPERIENCE_FILE = PROJECT_DIR / "memory/bank/experience.md"
-DAILY_LOG_DIR = PROJECT_DIR / "memory"
+EXPERIENCE_FILE = DATA_DIR / "memory/bank/experience.md"
+DAILY_LOG_DIR = DATA_DIR / "memory"
 
 AUTO_MARKER_START = "---\n## ◆ AUTO — 自动生成区域（脚本更新，勿手动编辑）"
 AUTO_MARKER_END = "<!-- END AUTO -->"
@@ -188,10 +189,10 @@ def build_auto_section():
         parts.append("")
 
     # Experience summary removed from AUTO to save tokens
-    # Available at ~/Desktop/claude-imprint/memory/bank/experience.md when needed
+    # Available at memory/bank/experience.md when needed
 
     # Daily logs removed from AUTO to save tokens
-    # Available at ~/Desktop/claude-imprint/memory/YYYY-MM-DD.md when needed
+    # Available at memory/YYYY-MM-DD.md when needed
 
     parts.append(AUTO_MARKER_END)
     return "\n".join(parts)

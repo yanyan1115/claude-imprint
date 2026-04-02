@@ -155,7 +155,7 @@ brew install ollama && ollama pull bge-m3
 
 ### Module A: Chat Integration
 
-**What you get:** Claude.ai chat shares the same memory as Claude Code. Plus: `send_telegram` (direct messaging), `cc_execute` (remote code execution), `system_status`, `read_webpage`, `spotify_control`, `morning_briefing` — all accessible from Claude.ai.
+**What you get:** Claude.ai chat shares the same memory as Claude Code, plus `cc_execute` for remote code execution and `message_bus` for cross-channel context. The HTTP server exposes memory tools, conversation search, and the CC task queue. For `send_telegram`, `system_status`, `read_webpage`, `spotify_control`, and `morning_briefing`, set up the corresponding packages separately (Telegram, Utils) — they work alongside via the shared memory database.
 
 **You need:** A domain (or free Cloudflare quick tunnel), Cloudflare account.
 
@@ -221,22 +221,28 @@ Add to Claude.ai **Custom Instructions** or **Project Instructions**:
 
 > *Use `memory_search` before answering questions about me. Use `memory_remember` to save important info. Use `send_telegram` to message me. Use `cc_execute` to run tasks on my computer.*
 
-**Available tools via Chat Integration:**
+**Tools exposed via HTTP (imprint-memory):**
 
 | Tool | What it does |
 |---|---|
 | `memory_remember/search/forget/list` | Read & write shared memory |
-| `send_telegram` | Send text message to Telegram |
-| `send_telegram_photo` | Send file/photo to Telegram |
+| `memory_update/delete/decay/reindex` | Manage memory entries |
+| `conversation_search` | Search conversation history |
 | `cc_execute` | Run a task on your computer via Claude Code |
 | `cc_check` / `cc_tasks` | Check task status |
-| `system_status` | CPU, RAM, disk, service health |
-| `read_webpage` | Fetch & extract text from a URL |
-| `spotify_control` | Play/pause/skip/volume (macOS) |
-| `morning_briefing` | Weather + calendar + tasks → Telegram |
 | `message_bus_read` | Read recent cross-channel message history |
 | `message_bus_post` | Write to the shared cross-channel context |
 | `memory_daily_log` | Append to today's daily log |
+
+**Additional tools from other packages (configure separately):**
+
+| Tool | Package | What it does |
+|---|---|---|
+| `send_telegram` / `send_telegram_photo` | imprint_telegram | Send messages/files to Telegram |
+| `system_status` | imprint_utils | CPU, RAM, disk, service health |
+| `read_webpage` | imprint_utils | Fetch & extract text from a URL |
+| `spotify_control` | imprint_utils | Play/pause/skip/volume (macOS) |
+| `morning_briefing` | imprint_utils | Weather + calendar + tasks → Telegram |
 
 ---
 
@@ -281,7 +287,7 @@ claude --permission-mode auto --dangerously-load-development-channels server:wec
 
 **What you get:** Heartbeat agent (periodic checks + proactive notifications), scheduled tasks (morning briefing, reminders).
 
-**You need:** At least one chat channel set up ([Module B: Telegram](#module-b-telegram) or [Module C: WeChat](#module-c-wechat)) for notifications.
+**You need:** [Module B: Telegram](#module-b-telegram) set up (heartbeat notifications are sent via Telegram).
 
 ```bash
 # Start heartbeat agent
@@ -366,6 +372,7 @@ claude "Read chat_sessions/session_001.txt and save important facts to memory us
 
 | Environment Variable | Default | Description |
 |---|---|---|
+| `IMPRINT_DATA_DIR` | (project root) | Directory for memory.db and memory/ files (e.g., `~/.imprint`) |
 | `TZ_OFFSET` | `0` | UTC offset for your timezone (e.g., `12` for NZST, `-5` for EST) |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama API endpoint |
 | `EMBED_MODEL` | `bge-m3` | Embedding model name |

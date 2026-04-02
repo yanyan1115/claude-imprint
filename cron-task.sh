@@ -13,7 +13,7 @@ set -euo pipefail
 
 TASK_NAME="${1:?Usage: cron-task.sh <task-name> <prompt-file>}"
 PROMPT_FILE="${2:?Usage: cron-task.sh <task-name> <prompt-file>}"
-PROJECT_DIR="$HOME/Desktop/claude-imprint"
+PROJECT_DIR="${IMPRINT_PROJECT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 LOG_DIR="$PROJECT_DIR/logs"
 CONTEXT_FILE="$PROJECT_DIR/recent_context.md"
 MCP_CONFIG="$PROJECT_DIR/cron-mcp.json"
@@ -63,7 +63,7 @@ if [ -n "$SENT_MSG" ]; then
     DISPLAY="${SENT_MSG:0:200}"
 
     # Write to conversation_log DB (source of truth — Stop hook rebuilds recent_context from this)
-    DB_FILE="$PROJECT_DIR/memory.db"
+    DB_FILE="${IMPRINT_DATA_DIR:-$PROJECT_DIR}/memory.db"
     DB_TS=$(date +"%Y-%m-%d %H:%M:%S")
     sqlite3 "$DB_FILE" "INSERT INTO conversation_log (platform, direction, speaker, content, session_id, entrypoint, created_at, summary) VALUES ('telegram', 'out', 'Agent', '${DISPLAY//\'/\'\'}', 'cron-${TASK_NAME}', 'cron', '${DB_TS}', '');" 2>> "$LOGFILE" || true
 
