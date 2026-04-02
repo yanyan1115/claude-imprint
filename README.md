@@ -364,10 +364,15 @@ claude-imprint/
 │   ├── imprint_heartbeat/    # Heartbeat agent + personality files
 │   └── imprint_dashboard/    # Single-file dashboard (FastAPI)
 ├── skills/
+│   ├── cc-remote.md          # Remote CC execution skill (for Claude.ai)
 │   ├── morning-briefing.md   # Morning briefing skill
-│   └── setup-memory.md       # Memory system setup guide
+│   ├── setup-memory.md       # Memory system setup guide
+│   ├── setup-telegram.md     # Telegram setup guide
+│   └── setup-wechat.md       # WeChat setup guide
 ├── hooks/
-│   └── pre-compact-flush.sh  # Pre-compaction memory saver
+│   ├── post-response.sh          # Post-response conversation logger
+│   ├── post_response_processor.py # Cross-channel message extraction
+│   └── pre-compact-flush.sh      # Pre-compaction memory saver
 ├── chat_cleaner.py           # Import old Claude.ai conversations
 ├── memory/                   # Daily logs + bank files
 │   └── bank/                 # Structured knowledge files
