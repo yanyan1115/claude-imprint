@@ -15,14 +15,17 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 - **Daily logs** — Automatic daily journals. Pre-compaction hooks capture context before it's compressed. Nothing gets lost.
 
 ### 💬 Multi-Channel
-- **Chat from anywhere** — Telegram, WeChat, Claude.ai, or Claude Code. Each channel is independent and optional. They all share the same memory.
+- **Telegram** (primary) — Full-featured: chat, file sharing, heartbeat notifications, morning briefings, direct messaging from Claude.ai. Uses Anthropic's official Claude Code Telegram plugin.
+- **WeChat** — Chat via [claude-wechat-channel](https://www.npmjs.com/package/claude-wechat-channel) bridge. Supports text messaging and cross-channel context, but no proactive notifications or file sending.
+- **Claude.ai** — Connect via Cloudflare Tunnel. Full memory access + remote code execution on your machine.
 - **Cross-channel context** — Messages flow in from all sources. Claude keeps a shared timeline of what happened where. When you switch devices, it already knows the context.
 
 ### 🎮 Remote Control
 - **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Claude.ai submits the task → local Claude Code executes it → results come back.
 - **Direct Telegram messaging** — Claude.ai can send messages and files to your Telegram instantly via Bot API.
 - **System monitor** — Check CPU, RAM, disk, running services — all from Claude.ai chat.
-- **Webpage reader & Spotify control** — Fetch URLs, control playback from anywhere.
+- **Webpage reader** — Fetch and read any URL from Claude.ai chat.
+- **Spotify control** — Play, pause, skip, volume from Claude.ai chat. macOS only (AppleScript).
 
 ### ⚡ Automation
 - **Scheduled tasks** — Morning briefing, reminders, nightly memory consolidation. Customizable cron prompt templates.
@@ -33,6 +36,18 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 - **Control panel** — Single-file FastAPI app (localhost:3000). Start/stop services, browse memories, view scheduled tasks, conversation stream stats, and a GitHub-style interaction heatmap.
 
 ![Dashboard](docs/dashboard.png)
+
+## Platform support
+
+| Feature | macOS | Linux |
+|---------|-------|-------|
+| Memory system, dashboard, hooks, cron | ✅ | ✅ |
+| Telegram, Claude.ai integration | ✅ | ✅ |
+| WeChat bridge | ✅ | ⚠️ needs display for QR login |
+| Spotify control | ✅ | ❌ AppleScript only |
+| `start-all.sh` / `stop-all.sh` | ✅ | ❌ uses osascript |
+
+Core features (memory, HTTP server, dashboard, Telegram, cron) work on Linux and cloud servers. Install Claude Code on the server, authenticate with an OAuth token, and you're set.
 
 ## Quick start
 
