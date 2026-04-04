@@ -4,6 +4,8 @@ A self-hosted system that gives Claude persistent memory, multi-channel messagin
 
 Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code features — no API costs, no third-party auth.
 
+> **Just want persistent memory?** The memory system is a standalone package: [imprint-memory](https://github.com/Qizhan7/imprint-memory). Install it alone with `pip install` — no need for the full Imprint stack. This repo adds multi-channel messaging, automation, dashboard, and everything else on top.
+
 ## Features
 
 ### 🧠 Memory
