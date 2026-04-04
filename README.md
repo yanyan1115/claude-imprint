@@ -1,6 +1,6 @@
 # Claude Imprint
 
-A self-hosted system that gives Claude persistent memory, multi-channel messaging, and automation. Talk to it from Claude Code, Claude.ai, Telegram, or WeChat — it remembers everything and shares context across channels.
+A self-hosted system that gives Claude persistent memory, multi-channel messaging, and automation. Talk to it from Claude Code, Claude.ai, or Telegram — it remembers everything and shares context across channels. Other channels (Discord, Slack, etc.) can be added via their own MCP servers.
 
 Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code features — no API costs, no third-party auth.
 
@@ -18,9 +18,9 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 
 ### 💬 Multi-Channel
 - **Telegram** (primary) — Full-featured: chat, file sharing, heartbeat notifications, morning briefings, direct messaging from Claude.ai. Uses Anthropic's official Claude Code Telegram plugin.
-- **WeChat** — Chat via [claude-wechat-channel](https://www.npmjs.com/package/claude-wechat-channel) bridge. Supports text messaging and cross-channel context, but no proactive notifications or file sending.
 - **Claude.ai** — Connect via Cloudflare Tunnel. Full memory access + remote code execution on your machine.
 - **Cross-channel context** — Messages flow in from all sources. Claude keeps a shared timeline of what happened where. When you switch devices, it already knows the context.
+- **Pluggable channels** — The system auto-detects any Claude Code channel plugin (Discord, Slack, etc.). Just install the MCP server and messages are automatically logged, tagged, and searchable.
 
 ### 🎮 Remote Control
 - **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Claude.ai submits the task → local Claude Code executes it → results come back.
@@ -46,7 +46,6 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 | Memory system, dashboard, hooks, cron | ✅ | ✅ |
 | Telegram, Claude.ai integration | ✅ | ✅ |
 | `start.sh` / `stop.sh` | ✅ Terminal windows | ✅ Background processes |
-| WeChat bridge | ✅ | ⚠️ needs display for QR login |
 | Spotify control | ✅ | ❌ AppleScript only |
 
 ### Cloud server deployment
@@ -114,13 +113,6 @@ claude /telegram:configure
 claude --permission-mode auto --channels plugin:telegram@claude-plugins-official
 ```
 
-### WeChat
-
-```bash
-npm install -g claude-wechat-channel
-claude --permission-mode auto --dangerously-load-development-channels server:wechat
-```
-
 ### Automation
 
 ```bash
@@ -180,7 +172,7 @@ The short version:
 
 ## Acknowledgements
 
-[imprint-memory](https://github.com/Qizhan7/imprint-memory) · [Anthropic](https://anthropic.com) · [claude-wechat-channel](https://www.npmjs.com/package/claude-wechat-channel) · [Ollama](https://ollama.com) + [bge-m3](https://huggingface.co/BAAI/bge-m3)
+[imprint-memory](https://github.com/Qizhan7/imprint-memory) · [Anthropic](https://anthropic.com) · [Ollama](https://ollama.com) + [bge-m3](https://huggingface.co/BAAI/bge-m3)
 
 ## License
 

@@ -39,7 +39,6 @@ def system_status() -> str:
         "Memory HTTP (port 8000)": {"port": 8000},
         "Cloudflare Tunnel": {"grep": "cloudflared tunnel"},
         "Telegram Channel": {"grep": "channels plugin:telegram"},
-        "WeChat Channel": {"grep": "dangerously-load-development-channels"},
         "Dashboard (port 3000)": {"port": 3000},
     }
     procs_cmdline = []

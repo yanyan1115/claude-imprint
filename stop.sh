@@ -25,7 +25,6 @@ stop_pid "Tunnel"       .pid-tunnel
 stop_pid "Heartbeat"    .pid-heartbeat
 stop_pid "Dashboard"    .pid-dashboard
 stop_pid "Telegram"     .pid-telegram
-stop_pid "WeChat"       .pid-wechat
 
 # Cleanup: kill any orphan processes
 pkill -f "imprint-memory --http" 2>/dev/null || true
@@ -36,11 +35,10 @@ IS_MAC=false
 
 if $IS_MAC; then
     echo ""
-    echo "   Note: Telegram/WeChat Terminal windows should be closed manually (Ctrl+C)"
+    echo "   Note: Telegram Terminal window should be closed manually (Ctrl+C)"
 else
-    # On Linux, also kill background Telegram/WeChat
+    # On Linux, also kill background Telegram
     pkill -f "channels plugin:telegram" 2>/dev/null || true
-    pkill -f "dangerously-load-development-channels server:wechat" 2>/dev/null || true
 fi
 
 echo ""

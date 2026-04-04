@@ -116,14 +116,20 @@ def extract_text(content) -> str:
 
 
 def parse_platform(entry: dict, content) -> str:
-    """Determine platform from entry."""
+    """Determine platform from entry.
+    Auto-detects channel name from MCP server/source strings so any
+    channel plugin (Telegram, Discord, Slack, etc.) is recognized
+    without hardcoding."""
     origin = entry.get("origin", {})
     if isinstance(origin, dict) and origin.get("kind") == "channel":
         server = origin.get("server", "")
-        if "telegram" in server:
-            return "telegram"
-        if "wechat" in server:
-            return "wechat"
+        if server:
+            # Extract platform name from server string
+            # e.g. "plugin:telegram@claude-plugins-official" → "telegram"
+            #      "server:discord" → "discord"
+            name = _extract_platform_name(server)
+            if name:
+                return name
         return "channel"
 
     # Check content for channel tags
@@ -131,15 +137,33 @@ def parse_platform(entry: dict, content) -> str:
         m = CHANNEL_RE.search(content)
         if m:
             source = m.group(1)
-            if "telegram" in source:
-                return "telegram"
-            if "wechat" in source:
-                return "wechat"
+            name = _extract_platform_name(source)
+            if name:
+                return name
 
     entrypoint = entry.get("entrypoint", "")
     if entrypoint == "sdk-cli":
         return "heartbeat"
     return "cc"
+
+
+# Known channel keywords → platform name
+_KNOWN_PLATFORMS = ["telegram", "discord", "slack", "wechat", "whatsapp", "signal"]
+
+
+def _extract_platform_name(server_str: str) -> str:
+    """Extract a human-readable platform name from a channel server string.
+    Checks known platform keywords first, then falls back to parsing
+    the server string format (e.g. 'plugin:NAME@...' or 'server:NAME')."""
+    s = server_str.lower()
+    for name in _KNOWN_PLATFORMS:
+        if name in s:
+            return name
+    # Parse format: "plugin:name@scope" or "server:name"
+    m = re.match(r"(?:plugin|server):([a-z0-9_-]+)", s)
+    if m:
+        return m.group(1)
+    return ""
 
 
 def process_new_messages(transcript_path: str, session_id: str) -> int:

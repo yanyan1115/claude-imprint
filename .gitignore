@@ -39,3 +39,5 @@ __pycache__/
 # Chat export data
 chat_sessions/
 conversations.json
+output/
+docs/tutorial-*.md

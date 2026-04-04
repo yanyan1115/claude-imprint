@@ -62,7 +62,6 @@ TELEGRAM_CHAT_ID=...
 
 ## Notes
 
-- **WeChat** requires QR code login — not practical on headless servers
 - **Spotify control** is macOS-only (AppleScript) — skipped on Linux
 - **Embedding**: Use `EMBED_PROVIDER=openai` on servers without GPU, or install Ollama
 - **Cron tasks**: Use standard Linux crontab with `cron-task.sh`

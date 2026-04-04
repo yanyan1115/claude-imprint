@@ -63,24 +63,7 @@ else
     fi
 fi
 
-# ─── 4. WeChat ───
-if is_proc_running "dangerously-load-development-channels server:wechat"; then
-    echo "   ✓ WeChat already running"
-elif ! npm list -g claude-wechat-channel &>/dev/null 2>&1; then
-    echo "   - WeChat: claude-wechat-channel not installed, skip"
-else
-    echo "   Starting WeChat..."
-    if $IS_MAC; then
-        osascript -e 'tell application "Terminal" to do script "cd '"$(pwd)"' && claude --permission-mode auto --dangerously-load-development-channels server:wechat"' 2>/dev/null
-        echo "   ✓ WeChat window opened"
-    else
-        nohup claude --permission-mode auto --dangerously-load-development-channels server:wechat > logs/wechat.log 2>&1 &
-        echo $! > .pid-wechat
-        echo "   ✓ WeChat started (PID: $!, log: logs/wechat.log)"
-    fi
-fi
-
-# ─── 5. Heartbeat ───
+# ─── 4. Heartbeat ───
 if is_running .pid-heartbeat; then
     echo "   ✓ Heartbeat already running"
 elif [ -f packages/imprint_heartbeat/agent.py ]; then
@@ -94,7 +77,7 @@ elif [ -f packages/imprint_heartbeat/agent.py ]; then
     echo "   ✓ Heartbeat started (PID: $!, interval: ${HEARTBEAT_INTERVAL:-900}s)"
 fi
 
-# ─── 6. Dashboard ───
+# ─── 5. Dashboard ───
 if is_proc_running "imprint_dashboard/dashboard.py"; then
     echo "   ✓ Dashboard already running"
 elif [ -f packages/imprint_dashboard/dashboard.py ]; then

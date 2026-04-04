@@ -1,8 +1,0 @@
-[project]
-name = "imprint-wechat"
-version = "0.1.0"
-description = "WeChat messaging tools for Claude Imprint via iLink Bot"
-requires-python = ">=3.11"
-dependencies = [
-    "mcp>=1.0.0",
-]

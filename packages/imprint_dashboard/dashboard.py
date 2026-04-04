@@ -49,12 +49,6 @@ COMPONENTS = {
         "terminal_cmd": "claude --permission-mode auto --channels plugin:telegram@claude-plugins-official",
         "type": "terminal",
     },
-    "wechat": {
-        "name": "📱 WeChat",
-        "grep_pattern": "dangerously-load-development-channels server:wechat",
-        "terminal_cmd": "claude --permission-mode auto --dangerously-load-development-channels server:wechat",
-        "type": "terminal",
-    },
 }
 
 
@@ -1296,7 +1290,7 @@ async function fetchStreamStats() {
     if (!el) return;
 
     const platformTags = Object.entries(data.platforms || {}).map(([p, c]) => {
-      const colors = {cc:'#B96748', telegram:'#0088cc', wechat:'#07C160', heartbeat:'#B0AEA5', channel:'#6A3EA1'};
+      const colors = {cc:'#B96748', telegram:'#0088cc', discord:'#5865F2', slack:'#4A154B', heartbeat:'#B0AEA5', channel:'#6A3EA1'};
       const color = colors[p] || '#6B6962';
       return '<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;border:1px solid '+color+';color:'+color+';margin:2px 4px 2px 0;">'+p+' '+c+'</span>';
     }).join('');

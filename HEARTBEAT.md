@@ -34,8 +34,6 @@ Mark as notified after sending. Don't repeat today.
 
 ## Notification Channels
 - **Telegram**: Primary channel, use reply tool (configure your chat_id)
-- **WeChat**: Secondary channel (if connected)
-- Send to Telegram first, WeChat as backup
 
 ## Rules
 - Quiet hours (23:00-07:00): no proactive messages unless urgent

@@ -26,6 +26,6 @@ fi
 pkill -f "imprint-memory --http" 2>/dev/null
 pkill -f "cloudflared tunnel" 2>/dev/null
 
-echo "   WeChat and Telegram windows: close manually (Ctrl+C)"
+echo "   Telegram window: close manually (Ctrl+C)"
 echo ""
 echo "Done"

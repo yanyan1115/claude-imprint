@@ -47,17 +47,6 @@ else
     echo "   Telegram window opened"
 fi
 
-# 4. WeChat (skip if not installed)
-if pgrep -f "dangerously-load-development-channels server:wechat" > /dev/null 2>&1; then
-    echo "   WeChat already running, skip"
-elif ! npm list -g claude-wechat-channel &>/dev/null 2>&1; then
-    echo "   WeChat: claude-wechat-channel not installed, skip"
-else
-    echo "Starting WeChat..."
-    osascript -e 'tell application "Terminal" to do script "claude --permission-mode auto --dangerously-load-development-channels server:wechat"' 2>/dev/null
-    echo "   WeChat window opened"
-fi
-
 echo ""
 echo "========================================"
 echo "Claude Imprint is running!"

@@ -1,10 +1,10 @@
 #!/bin/bash
 # ─── Imprint Cron Task Runner ───
-# Runs a claude CLI task with imprint-memory MCP only (no telegram/wechat plugins).
+# Runs a claude CLI task with imprint-memory MCP only (no channel plugins).
 # Usage: cron-task.sh <task-name> <prompt-file>
 #
 # Design decisions:
-#   - Runs from $HOME to avoid loading claude-imprint/.mcp.json (has wechat)
+#   - Runs from $HOME to avoid loading project-level .mcp.json
 #   - Uses cron-mcp.json with only imprint-memory
 #   - Captures AI output; if telegram was sent, appends to recent_context.md
 #   - --max-budget-usd caps cost; CLI exits naturally after completion
@@ -48,7 +48,7 @@ fi
 PROMPT=$(cat "$PROMPT_FILE")
 
 # ─── Run claude CLI ───
-# Run from $HOME to avoid loading project-level .mcp.json (has wechat config)
+# Run from $HOME to avoid loading project-level .mcp.json
 TMPOUT=$(mktemp)
 cd "$HOME"
 claude -p "$PROMPT" \
