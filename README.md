@@ -6,15 +6,33 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 
 ## Features
 
-**Memory** — SQLite + FTS5 + vector embeddings with RRF hybrid search, CJK support, categorized storage, knowledge bank, daily logs. Replaces Claude Code's built-in memory with something much more capable.
+### 🧠 Memory
+- **Hybrid search** — FTS5 full-text + bge-m3 vector embeddings + exact-match keyword, fused with RRF ranking and time-decay scoring. Replaces Claude Code's built-in file-based memory.
+- **CJK support** — Chinese/Japanese/Korean text segmented with jieba for accurate full-text search.
+- **Unified across interfaces** — The same SQLite backend serves Claude Code (stdio MCP) and Claude.ai (HTTP MCP via Cloudflare Tunnel). Memories saved in one are instantly searchable from the other.
+- **Categorized storage** — Memories tagged by type (facts, events, tasks, experience) and source. Search by category or let hybrid search find the best match.
+- **Knowledge bank** — Long-form structured knowledge in Markdown files (`memory/bank/`). Preferences, relationships, technical experience — all indexed and included in semantic search.
+- **Daily logs** — Automatic daily journals. Pre-compaction hooks capture context before it's compressed. Nothing gets lost.
 
-**Multi-channel** — Telegram, WeChat, Claude.ai, Claude Code. Each channel is independent and optional. They all share the same memory and context.
+### 💬 Multi-Channel
+- **Chat from anywhere** — Telegram, WeChat, Claude.ai, or Claude Code. Each channel is independent and optional. They all share the same memory.
+- **Cross-channel context** — Messages flow in from all sources. Claude keeps a shared timeline of what happened where. When you switch devices, it already knows the context.
 
-**Remote control** — From Claude.ai chat: run code on your machine, send Telegram messages, check system status, read webpages, control Spotify.
+### 🎮 Remote Control
+- **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Claude.ai submits the task → local Claude Code executes it → results come back.
+- **Direct Telegram messaging** — Claude.ai can send messages and files to your Telegram instantly via Bot API.
+- **System monitor** — Check CPU, RAM, disk, running services — all from Claude.ai chat.
+- **Webpage reader & Spotify control** — Fetch URLs, control playback from anywhere.
 
-**Automation** — Scheduled tasks, heartbeat agent with proactive notifications, cron prompt templates for morning briefings / reminders / nightly cleanup.
+### ⚡ Automation
+- **Scheduled tasks** — Morning briefing, reminders, nightly memory consolidation. Customizable cron prompt templates.
+- **Heartbeat agent** — Periodic automated checks with proactive Telegram notifications.
+- **Hooks** — Pre-compaction context saver + post-response conversation logger with auto-compression.
 
-**Dashboard** — FastAPI control panel (localhost:3000). Service manager, memory browser, interaction heatmap, conversation stream stats, scheduled tasks.
+### 📊 Dashboard
+- **Control panel** — Single-file FastAPI app (localhost:3000). Start/stop services, browse memories, view scheduled tasks, conversation stream stats, and a GitHub-style interaction heatmap.
+
+![Dashboard](docs/dashboard.png)
 
 ## Quick start
 
