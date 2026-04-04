@@ -24,7 +24,8 @@ export ANTHROPIC_API_KEY=sk-...
 
 # 4. Install systemd services
 # Edit each .service file to match your paths and env vars first
-sudo cp deploy/*.service /etc/systemd/system/
+# Service files are systemd templates (name@.service) — instantiated with your username
+sudo cp deploy/*@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # 5. Enable and start

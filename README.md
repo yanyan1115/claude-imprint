@@ -22,12 +22,12 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 - **Cross-channel context** — Messages flow in from all sources. Claude keeps a shared timeline of what happened where. When you switch devices, it already knows the context.
 - **Pluggable channels** — The system auto-detects any Claude Code channel plugin (Discord, Slack, etc.). Just install the MCP server and messages are automatically logged, tagged, and searchable.
 
-### 🎮 Remote Control
-- **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Claude.ai submits the task → local Claude Code executes it → results come back.
-- **Direct Telegram messaging** — Claude.ai can send messages and files to your Telegram instantly via Bot API.
-- **System monitor** — Check CPU, RAM, disk, running services — all from Claude.ai chat.
-- **Webpage reader** — Fetch and read any URL from Claude.ai chat.
-- **Spotify control** — Play, pause, skip, volume from Claude.ai chat. macOS only (AppleScript).
+### 🎮 Remote Control (requires [Chat Integration](#chat-integration-claudeai--local-memory) + additional MCP packages)
+- **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Works out of the box with Chat Integration.
+- **Direct Telegram messaging** — Claude.ai sends to your Telegram via Bot API. Requires `imprint_telegram` MCP (see [Telegram setup](#telegram)).
+- **System monitor** — Check CPU, RAM, disk, running services. Requires `imprint_utils` MCP.
+- **Webpage reader** — Fetch and read any URL. Requires `imprint_utils` MCP.
+- **Spotify control** — Play, pause, skip, volume. Requires `imprint_utils` MCP. macOS only (AppleScript).
 
 ### ⚡ Automation
 - **Scheduled tasks** — Morning briefing, reminders, nightly memory consolidation. Customizable cron prompt templates.
@@ -66,6 +66,12 @@ mkdir -p ~/.claude && echo "your-token" > ~/.claude/cron-token
 ```
 
 For production deployments, systemd service templates are provided in [`deploy/`](deploy/). See [`deploy/README.md`](deploy/README.md) for full instructions.
+
+## Prerequisites
+
+- **Python 3.10+** (required by imprint-memory for type hint syntax)
+- **Claude Code** (Pro or Max subscription)
+- **macOS or Linux**
 
 ## Quick start
 
@@ -125,6 +131,8 @@ bash cron-task.sh morning-briefing cron-prompts/morning-briefing.md
 
 Cron templates: `morning-briefing.md`, `drink-water.md`, `health-check.md`, `nightly-consolidation.md`, `weekly-memory-audit.md`. Edit to fit your style and schedule with crontab.
 
+> **Note:** Templates that use `send_telegram` or `system_status` need the full MCP config. The runner auto-detects `cron-mcp-full.json` (includes telegram + utils) if present, otherwise falls back to `cron-mcp.json` (memory only).
+
 ### Hooks
 
 ```bash
@@ -163,7 +171,7 @@ Without this, keyword search still works — you just don't get vector similarit
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IMPRINT_DATA_DIR` | project root | Directory for memory.db and files |
+| `IMPRINT_DATA_DIR` | `~/.imprint` | Directory for memory.db and files |
 | `TZ_OFFSET` | `0` | UTC offset (e.g. `12`, `-5`) |
 | `HEARTBEAT_INTERVAL` | `900` | Heartbeat interval (seconds) |
 | `TELEGRAM_BOT_TOKEN` | — | From @BotFather |

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "imprint-memory": {
+      "command": "imprint-memory"
+    },
+    "imprint-telegram": {
+      "command": "python3",
+      "args": ["packages/imprint_telegram/server.py"]
+    },
+    "imprint-utils": {
+      "command": "python3",
+      "args": ["packages/imprint_utils/server.py"]
+    }
+  }
+}

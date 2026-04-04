@@ -16,7 +16,13 @@ PROMPT_FILE="${2:?Usage: cron-task.sh <task-name> <prompt-file>}"
 PROJECT_DIR="${IMPRINT_PROJECT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 LOG_DIR="$PROJECT_DIR/logs"
 CONTEXT_FILE="$PROJECT_DIR/recent_context.md"
-MCP_CONFIG="$PROJECT_DIR/cron-mcp.json"
+# Use cron-mcp-full.json if available (includes telegram + utils tools),
+# otherwise fall back to cron-mcp.json (memory only).
+if [ -f "$PROJECT_DIR/cron-mcp-full.json" ]; then
+    MCP_CONFIG="$PROJECT_DIR/cron-mcp-full.json"
+else
+    MCP_CONFIG="$PROJECT_DIR/cron-mcp.json"
+fi
 
 # ─── Environment ───
 # cron has a minimal PATH; set up everything we need
