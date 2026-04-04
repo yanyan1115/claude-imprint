@@ -257,42 +257,44 @@ async def api_start(component: str):
         pid_path.write_text(str(proc.pid))
         return {"ok": True, "pid": proc.pid}
     else:
-        # Terminal window
+        # Terminal / interactive component
         cmd = comp["terminal_cmd"]
-        if shutil.which("osascript") is None:
-            return JSONResponse(
-                {"ok": False, "error": f"osascript not available (macOS only). Run manually: {cmd}"},
-                status_code=501,
-            )
-        try:
-            result = subprocess.run(
-                [
-                    "osascript", "-e",
-                    f'tell application "Terminal" to do script "cd {BASE} && {cmd}"'
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except subprocess.TimeoutExpired:
-            return JSONResponse(
-                {"ok": False, "error": f"Timed out opening Terminal. Run manually: {cmd}"},
-                status_code=504,
-            )
-        except Exception as e:
-            return JSONResponse(
-                {"ok": False, "error": f"Failed to launch Terminal: {e}. Run manually: {cmd}"},
-                status_code=500,
-            )
-
-        if result.returncode != 0:
-            err = (result.stderr or result.stdout or "").strip()
-            detail = f" AppleScript error: {err}" if err else ""
-            return JSONResponse(
-                {"ok": False, "error": f"Failed to open Terminal.{detail} Run manually: {cmd}"},
-                status_code=500,
-            )
-        return {"ok": True}
+        if shutil.which("osascript"):
+            # macOS: open in Terminal window
+            try:
+                result = subprocess.run(
+                    [
+                        "osascript", "-e",
+                        f'tell application "Terminal" to do script "cd {BASE} && {cmd}"'
+                    ],
+                    capture_output=True, text=True, timeout=10,
+                )
+            except (subprocess.TimeoutExpired, Exception) as e:
+                return JSONResponse(
+                    {"ok": False, "error": f"Failed to open Terminal: {e}. Run manually: {cmd}"},
+                    status_code=500,
+                )
+            if result.returncode != 0:
+                err = (result.stderr or result.stdout or "").strip()
+                return JSONResponse(
+                    {"ok": False, "error": f"AppleScript error: {err}. Run manually: {cmd}"},
+                    status_code=500,
+                )
+            return {"ok": True}
+        else:
+            # Linux: run as background process
+            log_name = component.replace(" ", "-")
+            log_path = LOGS / f"{log_name}.log"
+            pid_file = f".pid-{component}"
+            with open(log_path, "a") as log:
+                proc = subprocess.Popen(
+                    cmd.split(),
+                    stdout=log, stderr=log,
+                    cwd=str(BASE),
+                    start_new_session=True,
+                )
+            (BASE / pid_file).write_text(str(proc.pid))
+            return {"ok": True, "pid": proc.pid}
 
 
 @app.post("/api/{component}/stop")
@@ -317,8 +319,20 @@ async def api_stop(component: str):
             pid_path.unlink(missing_ok=True)
         return {"ok": True}
     else:
-        # Can't force-kill terminal sessions
-        return {"ok": True, "message": "Please close the terminal window manually (Ctrl+C)"}
+        if shutil.which("osascript"):
+            # macOS: can't force-kill terminal sessions
+            return {"ok": True, "message": "Please close the terminal window manually (Ctrl+C)"}
+        else:
+            # Linux: kill the background process
+            status = get_terminal_status(comp)
+            if status["running"] and status["pid"]:
+                try:
+                    os.kill(status["pid"], signal.SIGTERM)
+                except (ProcessLookupError, PermissionError):
+                    pass
+            pid_file = f".pid-{component}"
+            (BASE / pid_file).unlink(missing_ok=True)
+            return {"ok": True}
 
 
 @app.get("/api/heatmap")

@@ -1,0 +1,17 @@
+[Unit]
+Description=Imprint Dashboard
+After=imprint-memory.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/claude-imprint
+ExecStart=/usr/bin/python3 packages/imprint_dashboard/dashboard.py
+Restart=on-failure
+RestartSec=5
+
+Environment=IMPRINT_DATA_DIR=/home/%i/.imprint
+Environment=TZ_OFFSET=0
+
+[Install]
+WantedBy=multi-user.target

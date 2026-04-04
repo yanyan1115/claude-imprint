@@ -1,0 +1,20 @@
+[Unit]
+Description=Imprint Heartbeat Agent
+After=imprint-memory.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/claude-imprint
+ExecStart=/usr/bin/python3 -u packages/imprint_heartbeat/agent.py
+Restart=on-failure
+RestartSec=10
+
+Environment=IMPRINT_DATA_DIR=/home/%i/.imprint
+Environment=TZ_OFFSET=0
+Environment=HEARTBEAT_INTERVAL=900
+# Environment=TELEGRAM_BOT_TOKEN=...
+# Environment=TELEGRAM_CHAT_ID=...
+
+[Install]
+WantedBy=multi-user.target

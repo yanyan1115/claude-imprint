@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflare Tunnel for Imprint
+After=imprint-memory.service
+
+[Service]
+Type=simple
+User=%i
+ExecStart=/usr/local/bin/cloudflared tunnel run my-tunnel
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

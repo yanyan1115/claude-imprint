@@ -1,0 +1,20 @@
+[Unit]
+Description=Imprint Memory HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/claude-imprint
+ExecStart=/home/%i/.local/bin/imprint-memory --http
+Restart=on-failure
+RestartSec=5
+
+# Environment — edit these for your setup
+Environment=IMPRINT_DATA_DIR=/home/%i/.imprint
+Environment=TZ_OFFSET=0
+# Environment=EMBED_PROVIDER=openai
+# Environment=OPENAI_API_KEY=sk-...
+
+[Install]
+WantedBy=multi-user.target

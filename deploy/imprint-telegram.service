@@ -1,0 +1,16 @@
+[Unit]
+Description=Imprint Telegram Channel
+After=imprint-memory.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/claude-imprint
+ExecStart=/home/%i/.local/bin/claude --permission-mode auto --channels plugin:telegram@claude-plugins-official
+Restart=on-failure
+RestartSec=10
+
+Environment=PATH=/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

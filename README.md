@@ -39,15 +39,32 @@ Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code fe
 
 ## Platform support
 
-| Feature | macOS | Linux |
-|---------|-------|-------|
+| Feature | macOS | Linux / Cloud |
+|---------|-------|---------------|
 | Memory system, dashboard, hooks, cron | ✅ | ✅ |
 | Telegram, Claude.ai integration | ✅ | ✅ |
+| `start.sh` / `stop.sh` | ✅ Terminal windows | ✅ Background processes |
 | WeChat bridge | ✅ | ⚠️ needs display for QR login |
 | Spotify control | ✅ | ❌ AppleScript only |
-| `start-all.sh` / `stop-all.sh` | ✅ | ❌ uses osascript |
 
-Core features (memory, HTTP server, dashboard, Telegram, cron) work on Linux and cloud servers. Install Claude Code on the server, authenticate with an OAuth token, and you're set.
+### Cloud server deployment
+
+Core features (memory, HTTP server, dashboard, Telegram, heartbeat, cron) work on Linux cloud servers. Claude Code runs as a CLI tool — a basic VPS (1 CPU, 1GB RAM) is sufficient; the AI inference happens on Anthropic's servers, not yours.
+
+```bash
+# Quick start on a cloud server
+git clone https://github.com/Qizhan7/claude-imprint.git && cd claude-imprint
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Authenticate Claude Code (Max Plan OAuth token)
+mkdir -p ~/.claude && echo "your-token" > ~/.claude/cron-token
+
+./start.sh   # starts all services as background processes
+./stop.sh    # stops everything
+```
+
+For production deployments, systemd service templates are provided in [`deploy/`](deploy/). See [`deploy/README.md`](deploy/README.md) for full instructions.
 
 ## Quick start
 
