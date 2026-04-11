@@ -160,7 +160,6 @@ def build_auto_section():
             if last_inbound:
                 # Map platform abbreviations to display names
                 PLATFORM_NAMES = {
-                    "wx": "WeChat",
                     "tg": "Telegram",
                     "dc": "Discord",
                     "sl": "Slack",

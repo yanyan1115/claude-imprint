@@ -1,5 +1,5 @@
 # ─── Imprint Cron Task Runner (Windows) ───
-# Runs a claude CLI task with imprint-memory MCP only (no telegram/wechat plugins).
+# Runs a claude CLI task with imprint-memory MCP only (no channel plugins).
 # Usage: cron-task.ps1 <task-name> <prompt-file>
 #
 # Setup: Create a Windows Task Scheduler task that runs:

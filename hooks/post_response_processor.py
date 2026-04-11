@@ -148,7 +148,7 @@ def parse_platform(entry: dict, content) -> str:
 
 
 # Known channel keywords → platform name
-_KNOWN_PLATFORMS = ["telegram", "discord", "slack", "wechat", "whatsapp", "signal"]
+_KNOWN_PLATFORMS = ["telegram", "discord", "slack", "whatsapp", "signal"]
 
 
 def _extract_platform_name(server_str: str) -> str:
