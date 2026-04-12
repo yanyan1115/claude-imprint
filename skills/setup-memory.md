@@ -70,9 +70,9 @@ export TZ_OFFSET=12  # e.g., NZST
 ```
 
 ### 6. Bank Files
-Create markdown files in `memory/bank/` for persistent knowledge:
-- `memory/bank/preferences.md` — user preferences
-- `memory/bank/relationships.md` — people and roles
-- `memory/bank/experience.md` — lessons learned
+Create markdown files in `memory/bank/` for reference knowledge:
+- `memory/bank/experience.md` — lessons learned, debugging insights
 
 These are automatically indexed and included in semantic search.
+
+> **Note:** User preferences and relationship info should go in `CLAUDE.md` (loaded every conversation), not in bank files. Bank is for knowledge that's too large for CLAUDE.md but useful when searched.

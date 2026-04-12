@@ -57,15 +57,15 @@ class MemoryManagerReleaseTests(unittest.TestCase):
         self.assertIn("*0 memories", mem.MEMORY_INDEX.read_text(encoding="utf-8"))
 
     def test_bank_reindex_cleans_stale_template_rows(self):
-        bank_file = mem.BANK_DIR / "preferences.md"
-        bank_file.write_text("# Preferences\n\n<!-- template only -->\n", encoding="utf-8")
+        bank_file = mem.BANK_DIR / "test-stale.md"
+        bank_file.write_text("# Test\n\n<!-- template only -->\n", encoding="utf-8")
 
         db = db_mod._get_db()
         db.execute(
             """INSERT INTO bank_chunks
                (file_path, chunk_text, embedding, file_mtime, index_version)
                VALUES (?, ?, ?, ?, ?)""",
-            (str(bank_file), "# Preferences\n\n<!-- template only -->", None, bank_file.stat().st_mtime, 1),
+            (str(bank_file), "# Test\n\n<!-- template only -->", None, bank_file.stat().st_mtime, 1),
         )
         db.commit()
         db.close()

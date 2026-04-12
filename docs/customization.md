@@ -74,13 +74,11 @@ Edit this to match your schedule and preferences.
 
 Long-form structured knowledge that gets indexed for semantic search. Common files:
 
-- **`preferences.md`** — Your habits, dietary needs, daily routines
 - **`experience.md`** — Technical lessons, debugging insights
-- **`relationships.md`** — People you mention, their roles
-
-You can edit these directly, or just tell Claude — *"remember that I'm lactose intolerant"* — and it will write to the right file.
 
 Add any `.md` file here; it's automatically included in search.
+
+> **Tip:** Don't put user preferences or relationship info in bank files — that belongs in `CLAUDE.md` where it's loaded into every conversation automatically. Bank files are for reference knowledge that's too large to fit in CLAUDE.md but useful when searched (e.g., debugging notes, domain knowledge, guides).
 
 ## `MEMORY.md` — Memory index (auto-generated)
 
