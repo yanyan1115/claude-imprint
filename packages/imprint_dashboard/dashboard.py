@@ -5,6 +5,7 @@ localhost:3000 — manage all components: start/stop/status
 """
 
 import os
+import re
 import subprocess
 import signal
 import json
@@ -21,6 +22,7 @@ from imprint_memory import memory_manager as mem
 app = FastAPI(title="Claude Imprint")
 BASE = Path(__file__).parent.parent.parent  # packages/imprint_dashboard -> project root
 DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(Path.home() / ".imprint")))
+TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
 LOGS = BASE / "logs"
 LOGS.mkdir(exist_ok=True)
 
@@ -129,7 +131,7 @@ def get_memory_stats():
         conn.close()
 
         from datetime import datetime, timezone, timedelta
-        tz = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", 0))))
+        tz = timezone(timedelta(hours=TZ_OFFSET))
         today = datetime.now(tz).strftime("%Y-%m-%d")
         log_file = DATA_DIR / "memory" / f"{today}.md"
         today_logs = 0
@@ -169,24 +171,36 @@ def get_scheduled_tasks():
 
 
 def get_heatmap_data():
-    """Get interaction data for the past 365 days"""
+    """Get interaction data, dynamic date range back to earliest record"""
     from datetime import datetime, timezone, timedelta
-    tz = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", 0))))
+    tz = timezone(timedelta(hours=TZ_OFFSET))
     today = datetime.now(tz).date()
     data = {}
 
-    # Count memories per day from memory.db
     db_path = DATA_DIR / "memory.db"
     if db_path.exists():
         import sqlite3
         conn = sqlite3.connect(str(db_path))
+
         rows = conn.execute(
             "SELECT DATE(created_at) as d, COUNT(*) as c FROM memories GROUP BY DATE(created_at)"
         ).fetchall()
-        conn.close()
         for d, c in rows:
             if d:
                 data[d] = data.get(d, 0) + c
+
+        # Count conversation_log entries per day
+        try:
+            rows = conn.execute(
+                "SELECT DATE(created_at) as d, COUNT(*) as c FROM conversation_log GROUP BY DATE(created_at)"
+            ).fetchall()
+            for d, c in rows:
+                if d:
+                    data[d] = data.get(d, 0) + c
+        except sqlite3.OperationalError:
+            pass  # table may not exist yet
+
+        conn.close()
 
     # Also count daily log lines
     mem_dir = DATA_DIR / "memory"
@@ -197,9 +211,16 @@ def get_heatmap_data():
             if lines > 0:
                 data[d] = data.get(d, 0) + lines
 
-    # Assemble last 365 days
+    # Dynamic date range: back to earliest record
+    if data:
+        from datetime import date as _date
+        earliest = min(_date.fromisoformat(d) for d in data)
+    else:
+        earliest = today - timedelta(days=181)
+    total_days = (today - earliest).days
+
     result = []
-    for i in range(364, -1, -1):
+    for i in range(total_days, -1, -1):
         d = (today - timedelta(days=i)).isoformat()
         result.append({"date": d, "count": data.get(d, 0)})
     return result
@@ -389,7 +410,7 @@ async def api_stream_stats():
         return {"total": 0, "today": 0, "platforms": {}, "last_message": None}
     import sqlite3
     from datetime import datetime, timezone, timedelta
-    tz = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", 0))))
+    tz = timezone(timedelta(hours=TZ_OFFSET))
     today = datetime.now(tz).strftime("%Y-%m-%d")
 
     conn = sqlite3.connect(str(db_path))
@@ -457,6 +478,226 @@ async def api_logs(component: str, lines: int = 30):
         return {"logs": "\n".join(all_lines[-lines:])}
     except Exception as e:
         return {"logs": f"Read error: {e}"}
+
+
+def get_system_status():
+    """System status: today's messages, total messages, days active, last heartbeat"""
+    from datetime import datetime, timezone, timedelta
+    import sqlite3
+    tz = timezone(timedelta(hours=TZ_OFFSET))
+    now = datetime.now(tz)
+    today = now.date().isoformat()
+    tz_offset_str = f'+{TZ_OFFSET} hours' if TZ_OFFSET >= 0 else f'{TZ_OFFSET} hours'
+    db_path = DATA_DIR / "memory.db"
+    result = {"last_heartbeat": None, "today_messages": 0, "days_active": 0, "total_messages": 0}
+
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        try:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM conversation_log WHERE DATE(created_at, '{tz_offset_str}') = ?", (today,)
+            ).fetchone()
+            result["today_messages"] = row[0] if row else 0
+            row = conn.execute("SELECT COUNT(*) FROM conversation_log").fetchone()
+            result["total_messages"] = row[0] if row else 0
+            row = conn.execute(f"SELECT MIN(DATE(created_at, '{tz_offset_str}')) FROM conversation_log").fetchone()
+            if row and row[0]:
+                from datetime import date as dt_date
+                first = dt_date.fromisoformat(row[0])
+                result["days_active"] = (now.date() - first).days
+        except sqlite3.OperationalError:
+            pass
+        conn.close()
+
+    # Count CC conversation messages from JSONL files
+    cc_projects = Path.home() / ".claude" / "projects"
+    day_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(hours=TZ_OFFSET)).strftime("%Y-%m-%dT%H:%M")
+    if cc_projects.exists():
+        for jsonl in cc_projects.rglob("*.jsonl"):
+            try:
+                if (now.timestamp() - jsonl.stat().st_mtime) > 86400:
+                    continue
+                with open(jsonl) as fh:
+                    for line in fh:
+                        try:
+                            obj = json.loads(line)
+                            if obj.get("message", {}).get("role") == "user" and obj.get("timestamp", "") >= day_start:
+                                result["today_messages"] += 1
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+    # Last heartbeat from cron logs
+    latest_ts = None
+    for log_file in LOGS.glob("cron-*.log"):
+        try:
+            for line in reversed(log_file.read_text().strip().splitlines()):
+                m = re.match(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]", line)
+                if m:
+                    ts = m.group(1)
+                    if latest_ts is None or ts > latest_ts:
+                        latest_ts = ts
+                    break
+        except Exception:
+            pass
+    if latest_ts:
+        result["last_heartbeat"] = latest_ts
+
+    return result
+
+
+def get_memory_fragment():
+    """Get a random memory fragment (importance >= 3)"""
+    import sqlite3
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return None
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute(
+        "SELECT content, category, created_at FROM memories WHERE importance >= 3 ORDER BY RANDOM() LIMIT 1"
+    ).fetchone()
+    conn.close()
+    if row:
+        return {"content": row[0], "category": row[1], "date": row[2][:10] if row[2] else ""}
+    return None
+
+
+@app.get("/api/system-status")
+async def api_system_status():
+    return get_system_status()
+
+
+@app.get("/api/memory-fragment")
+async def api_memory_fragment():
+    frag = get_memory_fragment()
+    return {"fragment": frag}
+
+
+@app.get("/api/short-term-memory")
+async def api_short_term_memory():
+    """Read recent_context.md (Horizon), parse summaries and messages"""
+    ctx_file = DATA_DIR / "recent_context.md"
+    if not ctx_file.exists():
+        # Fallback: check BASE directory
+        ctx_file = BASE / "recent_context.md"
+    if not ctx_file.exists():
+        return {"exists": False, "summaries": [], "messages": [], "total_lines": 0, "msg_count": 0}
+
+    text = ctx_file.read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    updated = ""
+    for line in lines:
+        if "Updated:" in line:
+            updated = line.strip().replace("<!-- Updated: ", "").replace(" -->", "")
+            break
+
+    summaries = []
+    messages = []
+    summarized_count = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("<!--"):
+            continue
+        if stripped.startswith("[summary") or stripped.startswith("[摘要"):
+            summaries.append(stripped)
+        elif stripped.startswith("["):
+            messages.append(stripped)
+            if "[summary]" in stripped.lower() or "[摘要]" in stripped:
+                summarized_count += 1
+
+    return {
+        "exists": True,
+        "updated": updated,
+        "summaries": summaries,
+        "messages": messages,
+        "total_lines": len([l for l in lines if l.strip() and not l.strip().startswith("<!--")]),
+        "msg_count": len(messages),
+        "summarized_count": summarized_count,
+        "summary_count": len(summaries),
+        "threshold": 120,
+    }
+
+
+@app.get("/api/live-files")
+async def api_live_files():
+    """Return all dynamically-updated md files with content and metadata"""
+    from datetime import datetime, timezone, timedelta
+    tz = timezone(timedelta(hours=TZ_OFFSET))
+    now = datetime.now(tz)
+
+    CLAUDE_MD = Path.home() / ".claude" / "CLAUDE.md"
+    today = now.strftime("%Y-%m-%d")
+    daily_path = DATA_DIR / "memory" / f"{today}.md"
+
+    files_config = [
+        {"key": "claude_md", "label": "CLAUDE.md", "path": CLAUDE_MD, "desc": "Persona + system config"},
+        {"key": "recent_context", "label": "recent_context.md", "path": DATA_DIR / "recent_context.md", "desc": "Horizon — cross-channel recent context"},
+        {"key": "memory_index", "label": "MEMORY.md", "path": DATA_DIR / "MEMORY.md", "desc": "Memory index (auto-generated)"},
+        {"key": "daily_log", "label": f"{today}.md", "path": daily_path, "desc": "Today's event log"},
+        {"key": "experience", "label": "experience.md", "path": DATA_DIR / "memory" / "bank" / "experience.md", "desc": "Knowledge bank — experience"},
+        {"key": "backlog", "label": "backlog.md", "path": DATA_DIR / "memory" / "bank" / "backlog.md", "desc": "Knowledge bank — backlog"},
+    ]
+
+    # Also check BASE directory for recent_context.md fallback
+    rc_path = files_config[1]["path"]
+    if not rc_path.exists():
+        alt = BASE / "recent_context.md"
+        if alt.exists():
+            files_config[1]["path"] = alt
+
+    results = []
+    for f in files_config:
+        p = f["path"]
+        info = {"key": f["key"], "label": f["label"], "desc": f["desc"]}
+        if p and p.exists():
+            stat = p.stat()
+            mtime = datetime.fromtimestamp(stat.st_mtime, tz=tz)
+            info["exists"] = True
+            info["size"] = stat.st_size
+            info["mtime"] = mtime.strftime("%m-%d %H:%M")
+            info["content"] = p.read_text(encoding="utf-8", errors="replace")
+            age_min = (now - mtime).total_seconds() / 60
+            info["stale"] = age_min > 60
+        else:
+            info["exists"] = False
+            info["content"] = ""
+            info["mtime"] = ""
+            info["size"] = 0
+            info["stale"] = False
+        results.append(info)
+    return {"files": results}
+
+
+@app.get("/api/todos/system")
+async def api_todos_system():
+    """Read system todos (system-todos.md in bank/)"""
+    for name in ["system-todos.md", "north-todos.md"]:
+        f = DATA_DIR / "memory" / "bank" / name
+        if f.exists():
+            return {"content": f.read_text(encoding="utf-8")}
+    return {"content": ""}
+
+
+@app.get("/api/todos/backlog")
+async def api_todos_backlog():
+    """Read user backlog (backlog.md in bank/)"""
+    f = DATA_DIR / "memory" / "bank" / "backlog.md"
+    if not f.exists():
+        return {"content": ""}
+    return {"content": f.read_text(encoding="utf-8")}
+
+
+@app.put("/api/todos/backlog")
+async def api_save_backlog(request: Request):
+    """Save user backlog edits"""
+    body = await request.json()
+    content = body.get("content", "")
+    f = DATA_DIR / "memory" / "bank" / "backlog.md"
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(content, encoding="utf-8")
+    return {"ok": True}
 
 
 # ─── Frontend ────────────────────────────────────────────
@@ -728,13 +969,23 @@ async def dashboard():
     box-shadow: 0 0 6px rgba(185,103,72,0.3);
     flex-shrink: 0;
   }
-  .heatmap-section {
+  .heatmap-row {
+    display: flex;
+    gap: 12px;
     max-width: 900px;
     margin: 20px auto;
+    align-items: stretch;
+  }
+  .heatmap-section {
+    flex: 3;
     background: #FFFFFF;
     border: 1px solid #E8E6DC;
     border-radius: 12px;
     padding: 20px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .heatmap-section h2 {
     font-size: 18px;
@@ -746,6 +997,84 @@ async def dashboard():
     color: #B0AEA5;
     margin-bottom: 14px;
   }
+  .heatmap-sidebar {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .sidebar-card {
+    background: #FFFFFF;
+    border: 1px solid #E8E6DC;
+    border-radius: 12px;
+    padding: 16px 20px;
+    transition: border-color 0.3s;
+  }
+  .sidebar-card:hover { border-color: #C97B5A; }
+  .sidebar-card h3 {
+    font-size: 16px;
+    color: #B96748;
+    margin-bottom: 10px;
+  }
+  .status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .status-item {
+    text-align: center;
+    padding: 8px 4px;
+    background: #FAF9F5;
+    border-radius: 8px;
+  }
+  .status-item .num {
+    font-size: 24px;
+    font-weight: 300;
+    color: #B96748;
+    line-height: 1.2;
+  }
+  .status-item .label {
+    font-size: 11px;
+    color: #B0AEA5;
+    margin-top: 2px;
+  }
+  .fragment-card { padding: 14px 20px; }
+  .fragment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .fragment-header h3 { font-size: 16px; color: #B96748; margin: 0; }
+  .fragment-header .fragment-date { font-size: 11px; color: #B0AEA5; }
+  .fragment-body {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .fragment-content {
+    font-size: 13px;
+    color: #3D3D3A;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+  }
+  .fragment-refresh {
+    background: none;
+    border: none;
+    color: #B0AEA5;
+    cursor: pointer;
+    font-size: 13px;
+    transition: color 0.2s;
+  }
+  .fragment-refresh:hover { color: #B96748; }
   .heatmap-wrap {
     display: flex;
     gap: 8px;
@@ -837,13 +1166,134 @@ async def dashboard():
     white-space: pre-wrap;
     display: none;
   }
+  .todos-section {
+    max-width: 900px;
+    margin: 20px auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .todo-card {
+    background: #FFFFFF;
+    border: 1px solid #E8E6DC;
+    border-radius: 12px;
+    padding: 14px 18px;
+    transition: border-color 0.3s;
+  }
+  .todo-card:hover { border-color: #C97B5A; }
+  .todo-card h3 {
+    font-size: 17px;
+    font-weight: 600;
+    color: #B96748;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #F0EDE4;
+  }
+  .todo-content {
+    font-size: 13px;
+    color: #3D3D3A;
+    line-height: 1.75;
+    min-height: 50px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .todo-edit-area {
+    width: 100%;
+    min-height: 200px;
+    padding: 8px 12px;
+    border: 1px solid #E8E6DC;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #3D3D3A;
+    resize: vertical;
+    font-family: 'SF Mono', Monaco, monospace;
+    line-height: 1.7;
+    background: #FAFAF8;
+    display: none;
+  }
+  .todo-edit-area:focus { outline: none; border-color: #B96748; }
+  .todo-edit-btn {
+    background: none;
+    border: 1px solid #E8E6DC;
+    color: #B0AEA5;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .todo-edit-btn:hover { border-color: #B96748; color: #B96748; }
+  .todo-edit-btn.primary { background: #B96748; color: #fff; border-color: #B96748; }
+  .todo-edit-btn.primary:hover { background: #a05538; }
+  .live-files-section {
+    margin: 20px auto;
+    max-width: 900px;
+    background: #FFFFFF;
+    border: 1px solid #E8E6DC;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .live-files-section h2 {
+    font-size: 18px;
+    color: #B96748;
+    margin-bottom: 4px;
+  }
+  .live-file-card {
+    border-bottom: 1px solid #E8E6DC;
+    overflow: hidden;
+  }
+  .live-file-card:last-child { border-bottom: none; }
+  .live-file-header {
+    padding: 10px 0;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: color 0.15s;
+  }
+  .live-file-header:hover .live-file-label { color: #B96748; }
+  .live-file-label { font-weight: 600; font-size: 14px; transition: color 0.15s; }
+  .live-file-meta { font-size: 11px; color: #B0AEA5; display: flex; gap: 10px; align-items: center; }
+  .live-file-meta .stale { color: #C97B5A; font-weight: 400; }
+  .live-file-meta .fresh { color: #2B8A3E; }
+  .live-file-desc { font-size: 11px; color: #B0AEA5; margin-left: 8px; }
+  .live-file-content {
+    display: none;
+    padding: 0 0 12px;
+    max-height: 500px;
+    overflow-y: auto;
+    font-family: 'SF Mono', Monaco, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #6B6962;
+  }
+  .live-file-card.open .live-file-content { display: block; }
+  .live-file-card.open .live-file-label { color: #B96748; }
+  .live-file-missing { color: #B0AEA5; font-style: italic; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #C97B5A; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #B96748; }
+  * { scrollbar-width: thin; scrollbar-color: #C97B5A transparent; }
+  #stream-section .heatmap-subtitle { margin-bottom: 0; }
+  @media (max-width: 720px) {
+    .heatmap-row { flex-direction: column; }
+    .todos-section { grid-template-columns: 1fr; }
+    .heatmap-section { overflow: hidden; }
+    .heatmap-days span { width: 16px; font-size: 9px; padding-right: 2px; }
+    .heatmap-wrap { gap: 4px; }
+    .heatmap-months { margin-left: 22px; }
+  }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <h1>✨ Claude Imprint</h1>
-  <button class="lang-btn" onclick="toggleLang()" title="Switch language">🌐 <span id="lang-label">中文</span></button>
+  <h1>Claude Imprint</h1>
+  <button class="lang-btn" onclick="toggleLang()" title="Switch language"><span id="lang-label">EN</span></button>
 </div>
 
 <div class="grid" id="components"></div>
@@ -863,47 +1313,103 @@ async def dashboard():
   </div>
 </div>
 
+<div class="heatmap-row">
+  <div class="heatmap-section">
+    <h2>Interaction History</h2>
+    <div class="heatmap-subtitle">Darker = more activity that day</div>
+    <div id="heatmap">Loading...</div>
+    <div class="heatmap-legend">
+      <span>Less</span>
+      <div class="heatmap-cell"></div>
+      <div class="heatmap-cell" data-level="1"></div>
+      <div class="heatmap-cell" data-level="2"></div>
+      <div class="heatmap-cell" data-level="3"></div>
+      <div class="heatmap-cell" data-level="4"></div>
+      <span>More</span>
+    </div>
+  </div>
+  <div class="heatmap-sidebar">
+    <div class="sidebar-card fragment-card">
+      <div class="fragment-header">
+        <h3>Memory Fragment</h3>
+        <span class="fragment-date" id="fragment-date"></span>
+      </div>
+      <div class="fragment-body">
+        <div class="fragment-content" id="fragment-text">Loading...</div>
+        <button class="fragment-refresh" onclick="fetchFragment()" title="Refresh">&#x21bb;</button>
+      </div>
+    </div>
+    <div class="sidebar-card" style="flex:1;">
+      <h3>System</h3>
+      <div class="status-grid">
+        <div class="status-item"><div class="num" id="ns-days">-</div><div class="label">days</div></div>
+        <div class="status-item"><div class="num" id="ns-total">-</div><div class="label">messages</div></div>
+        <div class="status-item"><div class="num" id="ns-today">-</div><div class="label">today</div></div>
+        <div class="status-item"><div class="num" id="ns-heartbeat">-</div><div class="label">heartbeat</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="memory-section" id="stream-section">
   <h2>Stream</h2>
   <div class="heatmap-subtitle">conversation_log — full message archive</div>
   <div id="stream-stats" style="margin-top:12px;">Loading...</div>
 </div>
 
-<div class="heatmap-section">
-  <h2>📊 Interaction Heatmap</h2>
-  <div class="heatmap-subtitle">Darker = more activity that day</div>
-  <div id="heatmap">Loading...</div>
-  <div class="heatmap-legend">
-    <span>Less</span>
-    <div class="heatmap-cell"></div>
-    <div class="heatmap-cell" data-level="1"></div>
-    <div class="heatmap-cell" data-level="2"></div>
-    <div class="heatmap-cell" data-level="3"></div>
-    <div class="heatmap-cell" data-level="4"></div>
-    <span>More</span>
-  </div>
-</div>
-
 <div class="tasks-section">
-  <h2>⏰ Scheduled Tasks</h2>
+  <h2>Scheduled Tasks</h2>
   <div id="tasks-list">Loading...</div>
 </div>
 
+<div class="todos-section">
+  <div class="todo-card">
+    <h3>System Tasks</h3>
+    <div class="todo-content" id="system-todo-content">Loading...</div>
+  </div>
+  <div class="todo-card">
+    <h3>Backlog</h3>
+    <div class="todo-content" id="backlog-display">Loading...</div>
+    <textarea class="todo-edit-area" id="backlog-edit-area" placeholder="Use Markdown, e.g.:&#10;- [ ] Task to do&#10;- [x] Completed task"></textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="todo-edit-btn" id="backlog-edit-btn" onclick="toggleBacklogEdit()">Edit</button>
+      <button class="todo-edit-btn primary" id="backlog-save-btn" style="display:none;" onclick="saveBacklog()">Save</button>
+      <button class="todo-edit-btn" id="backlog-cancel-btn" style="display:none;" onclick="cancelBacklogEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="memory-section" id="stm-section">
+  <h2>Horizon</h2>
+  <div class="heatmap-subtitle" id="stm-meta">Loading...</div>
+  <div id="stm-summaries" style="margin-bottom:12px;"></div>
+  <details id="stm-details">
+    <summary style="cursor:pointer;color:#B96748;font-size:13px;margin-bottom:8px;">Show raw messages</summary>
+    <div id="stm-messages" style="max-height:400px;overflow-y:auto;font-family:monospace;font-size:12px;line-height:1.6;color:#6B6962;"></div>
+  </details>
+</div>
+
 <div class="tasks-section">
-  <h2>🔧 Remote Tool Log</h2>
+  <h2>Remote Tool Log</h2>
   <div class="heatmap-subtitle">Tool calls from Claude.ai chat</div>
   <div id="remote-tools" style="margin-top:12px;max-height:400px;overflow-y:scroll;">Loading...</div>
 </div>
 
 <div class="memory-section">
-  <h2>🧠 Memory</h2>
+  <h2>Memory</h2>
   <input class="search-box" type="text" placeholder="Search memories..." id="memory-search" oninput="searchMemories()">
   <div id="memory-list" style="max-height:500px;overflow-y:auto;"></div>
 </div>
 
+<div class="live-files-section">
+  <h2>Live Files</h2>
+  <div class="heatmap-subtitle">Dynamically-updated config and memory files</div>
+  <div id="live-files" style="margin-top:12px;">Loading...</div>
+</div>
+
 <div class="modal-overlay" id="edit-modal">
   <div class="modal">
-    <h3>✏️ Edit Memory</h3>
+    <h3>Edit Memory</h3>
     <input type="hidden" id="edit-id">
     <textarea id="edit-content"></textarea>
     <div class="modal-row">
@@ -933,24 +1439,47 @@ const i18n = {
     logs: 'Logs',
     tunnelUrl: 'Tunnel URL', memories: 'Memories', todayLogs: "Today's Logs",
     notRunning: 'Not running',
-    heatmapTitle: '📊 Interaction Heatmap',
+    heatmapTitle: 'Interaction History',
     heatmapSub: 'Darker = more activity that day',
     less: 'Less', more: 'More',
     interactions: 'interactions', quietDay: 'quiet day',
-    scheduledTasks: '⏰ Scheduled Tasks',
+    scheduledTasks: 'Scheduled Tasks',
     noTasks: 'No scheduled tasks',
-    remoteLog: '🔧 Remote Tool Log',
+    remoteLog: 'Remote Tool Log',
     remoteLogSub: 'Tool calls from Claude.ai chat',
     noRemote: 'No remote calls yet',
-    memoryTitle: '🧠 Memory',
+    streamTitle: 'Stream',
+    streamSub: 'conversation_log — full message archive',
+    streamTotal: 'total',
+    streamToday: 'today',
+    streamLast: 'Latest',
+    horizonTitle: 'Horizon',
+    memoryTitle: 'Memory',
     searchPlaceholder: 'Search memories...',
     noMemories: 'No memories yet',
     edit: 'Edit', delete: 'Delete', cancel: 'Cancel', save: 'Save',
-    editMemory: '✏️ Edit Memory',
+    editMemory: 'Edit Memory',
     importance: 'Importance 1-10',
     confirmDelete: 'Delete this memory?',
     actionFailed: 'Action failed',
     noData: 'No data',
+    noFragment: 'No memories yet',
+    fragmentTitle: 'Memory Fragment',
+    systemTitle: 'System',
+    daysLabel: 'days', messagesLabel: 'messages', todayLabel: 'today', heartbeatLabel: 'heartbeat',
+    systemTasks: 'System Tasks',
+    backlog: 'Backlog',
+    editBtn: 'Edit', saveBtn: 'Save', cancelBtn: 'Cancel',
+    liveFiles: 'Live Files',
+    liveFilesSub: 'Dynamically-updated config and memory files',
+    noFiles: 'No files',
+    fileMissing: 'File not found',
+    noSummaries: 'No compression summaries yet',
+    summaryHeader: 'Compressed Summaries',
+    showMessages: 'Show raw messages',
+    noMessages: 'No messages',
+    stmMissing: 'recent_context.md not found',
+    summaries: 'summaries', originals: 'originals', compressed: 'compressed',
     days: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
     months: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
   },
@@ -961,24 +1490,47 @@ const i18n = {
     logs: '日志',
     tunnelUrl: '隧道地址', memories: '记忆数', todayLogs: '今日日志',
     notRunning: '未运行',
-    heatmapTitle: '📊 互动热力图',
+    heatmapTitle: '互动历史',
     heatmapSub: '颜色越深 = 当天互动越多',
     less: '少', more: '多',
     interactions: '次互动', quietDay: '无互动',
-    scheduledTasks: '⏰ 定时任务',
+    scheduledTasks: '定时任务',
     noTasks: '暂无定时任务',
-    remoteLog: '🔧 远程工具日志',
+    remoteLog: '远程工具日志',
     remoteLogSub: '来自 Claude.ai chat 的工具调用',
     noRemote: '暂无远程调用',
-    memoryTitle: '🧠 记忆库',
+    streamTitle: 'Stream 对话流',
+    streamSub: 'conversation_log 全量原文归档',
+    streamTotal: '条总记录',
+    streamToday: '条今日',
+    streamLast: '最新',
+    horizonTitle: 'Horizon 视野',
+    memoryTitle: '记忆库',
     searchPlaceholder: '搜索记忆...',
     noMemories: '暂无记忆',
     edit: '编辑', delete: '删除', cancel: '取消', save: '保存',
-    editMemory: '✏️ 编辑记忆',
+    editMemory: '编辑记忆',
     importance: '重要性 1-10',
     confirmDelete: '确定删除这条记忆？',
     actionFailed: '操作失败',
     noData: '暂无数据',
+    noFragment: '暂无记忆',
+    fragmentTitle: '记忆碎片',
+    systemTitle: '系统状态',
+    daysLabel: '天', messagesLabel: '条消息', todayLabel: '今日互动', heartbeatLabel: '上次心跳',
+    systemTasks: '系统待办',
+    backlog: '待办清单',
+    editBtn: '编辑', saveBtn: '保存', cancelBtn: '取消',
+    liveFiles: '系统文件监控',
+    liveFilesSub: '所有动态更新的配置和记忆文件',
+    noFiles: '暂无文件',
+    fileMissing: '文件不存在',
+    noSummaries: '暂无压缩总结',
+    summaryHeader: '压缩总结',
+    showMessages: '展开原文消息',
+    noMessages: '暂无消息',
+    stmMissing: 'recent_context.md 不存在',
+    summaries: '条摘要', originals: '条原文', compressed: '压缩',
     days: ['日','一','二','三','四','五','六'],
     months: ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'],
   }
@@ -988,11 +1540,11 @@ function t(key) { return i18n[lang][key] || i18n.en[key] || key; }
 function toggleLang() {
   lang = lang === 'en' ? 'zh' : 'en';
   localStorage.setItem('imprint-lang', lang);
-  document.getElementById('lang-label').textContent = lang === 'en' ? '中文' : 'EN';
+  document.getElementById('lang-label').textContent = lang === 'en' ? 'EN' : '中文';
   refreshAll();
 }
 function applyStaticI18n() {
-  document.getElementById('lang-label').textContent = lang === 'en' ? '中文' : 'EN';
+  document.getElementById('lang-label').textContent = lang === 'en' ? 'EN' : '中文';
   document.querySelector('.heatmap-section h2').textContent = t('heatmapTitle');
   document.querySelector('.heatmap-section .heatmap-subtitle').textContent = t('heatmapSub');
   const legend = document.querySelectorAll('.heatmap-legend > span');
@@ -1002,7 +1554,15 @@ function applyStaticI18n() {
   if (taskSections[1]) taskSections[1].textContent = t('remoteLog');
   const remoteSub = document.querySelectorAll('.tasks-section .heatmap-subtitle');
   if (remoteSub[0]) remoteSub[0].textContent = t('remoteLogSub');
-  document.querySelector('.memory-section h2').textContent = t('memoryTitle');
+  const streamH2 = document.querySelector('#stream-section h2');
+  if (streamH2) streamH2.textContent = t('streamTitle');
+  const streamSub = document.querySelector('#stream-section .heatmap-subtitle');
+  if (streamSub) streamSub.textContent = t('streamSub');
+  const stmH2 = document.querySelector('#stm-section h2');
+  if (stmH2) stmH2.textContent = t('horizonTitle');
+  const memSections = document.querySelectorAll('.memory-section h2');
+  if (memSections.length >= 3) memSections[memSections.length - 1].textContent = t('memoryTitle');
+  else if (memSections.length >= 1) memSections[memSections.length - 1].textContent = t('memoryTitle');
   document.getElementById('memory-search').placeholder = t('searchPlaceholder');
   document.querySelector('.modal h3').textContent = t('editMemory');
   document.getElementById('edit-importance').placeholder = t('importance');
@@ -1013,14 +1573,44 @@ function applyStaticI18n() {
   if (infoLabels[0]) infoLabels[0].textContent = t('tunnelUrl');
   if (infoLabels[1]) infoLabels[1].textContent = t('memories');
   if (infoLabels[2]) infoLabels[2].textContent = t('todayLogs');
+  // sidebar cards
+  const fragH3 = document.querySelector('.fragment-header h3');
+  if (fragH3) fragH3.textContent = t('fragmentTitle');
+  const sysH3 = document.querySelectorAll('.heatmap-sidebar .sidebar-card h3');
+  if (sysH3.length >= 2) sysH3[1].textContent = t('systemTitle');
+  // status labels
+  const statusLabels = document.querySelectorAll('.status-item .label');
+  if (statusLabels.length >= 4) {
+    statusLabels[0].textContent = t('daysLabel');
+    statusLabels[1].textContent = t('messagesLabel');
+    statusLabels[2].textContent = t('todayLabel');
+    statusLabels[3].textContent = t('heartbeatLabel');
+  }
+  // todos
+  const todoH3s = document.querySelectorAll('.todo-card h3');
+  if (todoH3s[0]) todoH3s[0].textContent = t('systemTasks');
+  if (todoH3s[1]) todoH3s[1].textContent = t('backlog');
+  document.getElementById('backlog-edit-btn').textContent = t('editBtn');
+  document.getElementById('backlog-save-btn').textContent = t('saveBtn');
+  document.getElementById('backlog-cancel-btn').textContent = t('cancelBtn');
+  // live files
+  const lfH2 = document.querySelector('.live-files-section h2');
+  if (lfH2) lfH2.textContent = t('liveFiles');
+  const lfSub = document.querySelector('.live-files-section .heatmap-subtitle');
+  if (lfSub) lfSub.textContent = t('liveFilesSub');
 }
 function refreshAll() {
   applyStaticI18n();
   fetchStatus();
   fetchHeatmap();
+  fetchSystemStatus();
+  fetchFragment();
   fetchStreamStats();
+  fetchShortTermMemory();
+  fetchTodos();
   searchMemories();
   fetchRemoteTools();
+  fetchLiveFiles();
 }
 
 async function fetchStatus() {
@@ -1182,6 +1772,35 @@ async function saveMemory() {
   searchMemories();
 }
 
+async function fetchSystemStatus() {
+  try {
+    const r = await fetch('/api/system-status');
+    const data = await r.json();
+    document.getElementById('ns-days').textContent = data.days_active || '0';
+    document.getElementById('ns-total').textContent = data.total_messages || '0';
+    document.getElementById('ns-today').textContent = data.today_messages || '0';
+    if (data.last_heartbeat) {
+      document.getElementById('ns-heartbeat').textContent = data.last_heartbeat.substring(11, 16);
+    } else {
+      document.getElementById('ns-heartbeat').textContent = '-';
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function fetchFragment() {
+  try {
+    const r = await fetch('/api/memory-fragment');
+    const data = await r.json();
+    if (data.fragment) {
+      document.getElementById('fragment-text').textContent = data.fragment.content;
+      document.getElementById('fragment-date').textContent = data.fragment.date + ' · ' + data.fragment.category;
+    } else {
+      document.getElementById('fragment-text').textContent = t('noFragment');
+      document.getElementById('fragment-date').textContent = '';
+    }
+  } catch(e) { console.error(e); }
+}
+
 async function fetchHeatmap() {
   try {
     const r = await fetch('/api/heatmap');
@@ -1197,7 +1816,6 @@ function renderHeatmap(days) {
     return;
   }
 
-  // Level: 0=no activity, 1-4 by quartile
   const counts = days.map(d => d.count).filter(c => c > 0);
   const max = Math.max(...counts, 1);
   const q1 = max * 0.25, q2 = max * 0.5, q3 = max * 0.75;
@@ -1210,22 +1828,18 @@ function renderHeatmap(days) {
     return 4;
   }
 
-  // GitHub-style: columns=weeks, rows=day-of-week
   const firstDate = new Date(days[0].date + 'T00:00:00');
-  const firstDay = firstDate.getDay(); // 0=Sun
+  const firstDay = firstDate.getDay();
 
-  // Pad first week
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   days.forEach(d => cells.push(d));
 
-  // Split into weeks
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) {
     weeks.push(cells.slice(i, i + 7));
   }
 
-  // Month labels
   const months = [];
   let lastMonth = '';
   weeks.forEach((week, wi) => {
@@ -1241,45 +1855,47 @@ function renderHeatmap(days) {
   });
 
   const dayLabels = t('days');
-
   const totalGridWidth = weeks.length * 15 - 3;
-  let html = '<div class="heatmap-months" style="padding-left:32px;display:flex;width:' + totalGridWidth + 'px;">';
-  // Position month labels
-  let monthHtml = '';
+
+  // Day labels (fixed left)
+  let daysHtml = '<div class="heatmap-days">';
+  for (let i = 0; i < 7; i++) {
+    daysHtml += '<span>' + (i % 2 === 1 ? dayLabels[i] : '') + '</span>';
+  }
+  daysHtml += '</div>';
+
+  // Scrollable area: month labels + grid
+  let scrollHtml = '<div class="heatmap-scroll" style="overflow-x:auto;flex:1;min-width:0;">';
+  scrollHtml += '<div class="heatmap-months" style="display:flex;width:' + totalGridWidth + 'px;">';
   months.forEach((m, i) => {
     const next = months[i + 1] ? months[i + 1].index : weeks.length;
     const span = next - m.index;
-    monthHtml += '<span style="width:' + (span * 15) + 'px;flex-shrink:0">' + m.label + '</span>';
+    scrollHtml += '<span style="width:' + (span * 15) + 'px;flex-shrink:0">' + m.label + '</span>';
   });
-  html += monthHtml + '</div>';
+  scrollHtml += '</div>';
 
-  html += '<div class="heatmap-wrap">';
-  // Day labels
-  html += '<div class="heatmap-days">';
-  for (let i = 0; i < 7; i++) {
-    html += '<span>' + (i % 2 === 1 ? dayLabels[i] : '') + '</span>';
-  }
-  html += '</div>';
-
-  // Grid cells
-  html += '<div class="heatmap-grid">';
+  scrollHtml += '<div class="heatmap-grid" style="overflow-x:visible;">';
   weeks.forEach(week => {
-    html += '<div class="heatmap-col">';
+    scrollHtml += '<div class="heatmap-col">';
     for (let i = 0; i < 7; i++) {
       const d = i < week.length ? week[i] : null;
       if (d === null) {
-        html += '<div class="heatmap-cell" style="visibility:hidden"></div>';
+        scrollHtml += '<div class="heatmap-cell" style="visibility:hidden"></div>';
       } else {
         const lv = level(d.count);
         const tip = d.date + ': ' + (d.count > 0 ? d.count + ' ' + t('interactions') : t('quietDay'));
-        html += '<div class="heatmap-cell" data-level="' + lv + '"><span class="tooltip">' + tip + '</span></div>';
+        scrollHtml += '<div class="heatmap-cell" data-level="' + lv + '"><span class="tooltip">' + tip + '</span></div>';
       }
     }
-    html += '</div>';
+    scrollHtml += '</div>';
   });
-  html += '</div></div>';
+  scrollHtml += '</div></div>';
 
-  container.innerHTML = html;
+  container.innerHTML = '<div class="heatmap-wrap">' + daysHtml + scrollHtml + '</div>';
+
+  // Auto-scroll to latest
+  const scrollEl = container.querySelector('.heatmap-scroll');
+  if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
 }
 
 async function fetchStreamStats() {
@@ -1298,9 +1914,9 @@ async function fetchStreamStats() {
     let lastLine = '';
     if (data.last_message) {
       const lm = data.last_message;
-      const arrow = lm.direction === 'in' ? '\u2190' : '\u2192';
+      const arrow = lm.direction === 'in' ? '\\u2190' : '\\u2192';
       lastLine = '<div style="margin-top:10px;padding:8px 12px;background:#F5F4EF;border-radius:8px;font-size:12px;color:#6B6962;">'
-        + '<span style="color:#B0AEA5;">Latest</span> '
+        + '<span style="color:#B0AEA5;">' + t('streamLast') + '</span> '
         + '<span style="color:#B96748;font-weight:600;">[' + lm.platform + ' ' + arrow + ']</span> '
         + lm.content.replace(/</g,'&lt;')
         + '<span style="float:right;color:#B0AEA5;">' + (lm.time||'') + '</span>'
@@ -1309,13 +1925,110 @@ async function fetchStreamStats() {
 
     el.innerHTML = '<div style="display:flex;gap:20px;align-items:baseline;flex-wrap:wrap;">'
       + '<span style="font-size:28px;font-weight:700;color:#B96748;">' + (data.total||0).toLocaleString() + '</span>'
-      + '<span style="color:#B0AEA5;font-size:13px;">total</span>'
+      + '<span style="color:#B0AEA5;font-size:13px;">' + t('streamTotal') + '</span>'
       + '<span style="font-size:20px;font-weight:600;color:#3D3D3A;">+' + (data.today||0) + '</span>'
-      + '<span style="color:#B0AEA5;font-size:13px;">today</span>'
+      + '<span style="color:#B0AEA5;font-size:13px;">' + t('streamToday') + '</span>'
       + '</div>'
       + '<div style="margin-top:8px;">' + platformTags + '</div>'
       + lastLine;
   } catch(e) { console.error('stream stats error:', e); }
+}
+
+async function fetchShortTermMemory() {
+  try {
+    const r = await fetch('/api/short-term-memory');
+    const data = await r.json();
+    const meta = document.getElementById('stm-meta');
+    const sumEl = document.getElementById('stm-summaries');
+    const msgEl = document.getElementById('stm-messages');
+
+    if (!data.exists) {
+      meta.textContent = t('stmMissing');
+      sumEl.innerHTML = '';
+      msgEl.innerHTML = '';
+      return;
+    }
+
+    const pct = Math.round((data.msg_count / data.threshold) * 100);
+    const barColor = pct >= 90 ? '#c0392b' : pct >= 70 ? '#F59E0B' : '#B96748';
+    const origCount = data.msg_count - (data.summarized_count || 0);
+    meta.innerHTML = 'Updated: ' + data.updated + ' · ' + (data.summarized_count || 0) + ' ' + t('summaries') + ' + ' + origCount + ' ' + t('originals') + ' · ' + t('compressed') + ' ' + data.msg_count + '/' + data.threshold
+      + '<div style="margin-top:6px;background:#EBEAE2;border-radius:4px;height:6px;max-width:300px;">'
+      + '<div style="width:' + Math.min(pct,100) + '%;height:100%;background:' + barColor + ';border-radius:4px;transition:width 0.3s;"></div></div>';
+
+    if (data.summaries.length) {
+      sumEl.innerHTML = '<div style="background:#FFF8F0;border:1px solid #F0D1C2;border-radius:8px;padding:12px;font-size:13px;line-height:1.6;">'
+        + '<div style="font-weight:600;color:#B96748;margin-bottom:6px;">' + t('summaryHeader') + '</div>'
+        + data.summaries.map(s => '<div style="color:#6B6962;">' + s.replace(/</g,'&lt;') + '</div>').join('')
+        + '</div>';
+    } else {
+      sumEl.innerHTML = '<div style="color:#B0AEA5;font-size:13px;">' + t('noSummaries') + '</div>';
+    }
+
+    if (data.messages.length) {
+      msgEl.innerHTML = data.messages.map(m => {
+        const escaped = m.replace(/</g, '&lt;');
+        const isSummary = escaped.toLowerCase().includes('[summary]') || escaped.includes('[摘要]');
+        let styled = escaped
+          .replace(/\\[(.*?)(cc\\/in)\\]/,  '<span style="color:#B96748">[$1$2]</span>')
+          .replace(/\\[(.*?)(cc\\/out)\\]/, '<span style="color:#7B8794">[$1$2]</span>')
+          .replace(/\\[(.*?)(tg\\/in)\\]/,  '<span style="color:#0088cc">[$1$2]</span>')
+          .replace(/\\[(.*?)(tg\\/out)\\]/, '<span style="color:#006699">[$1$2]</span>');
+        if (isSummary) {
+          styled = styled.replace(/\\[(summary|摘要)\\]/i, '<span style="background:#E8DEF8;color:#6A3EA1;padding:1px 4px;border-radius:3px;font-size:11px;margin-right:2px;">$1</span>');
+        }
+        const bg = isSummary ? 'background:#FAFAFE;' : '';
+        return '<div style="padding:2px 0;border-bottom:1px solid #F5F4EF;' + bg + '">' + styled + '</div>';
+      }).join('');
+    } else {
+      msgEl.innerHTML = '<div style="color:#B0AEA5;">' + t('noMessages') + '</div>';
+    }
+  } catch(e) { console.error('STM fetch error:', e); }
+}
+
+async function fetchLiveFiles() {
+  try {
+    const r = await fetch('/api/live-files');
+    const data = await r.json();
+    const el = document.getElementById('live-files');
+    if (!data.files || !data.files.length) {
+      el.innerHTML = '<div style="color:#B0AEA5;">' + t('noFiles') + '</div>';
+      return;
+    }
+    const openKeys = new Set();
+    el.querySelectorAll('.live-file-card.open').forEach(c => openKeys.add(c.dataset.key));
+
+    let html = '';
+    data.files.forEach(f => {
+      const isOpen = openKeys.has(f.key) ? ' open' : '';
+      const sizeStr = f.size > 1024 ? (f.size/1024).toFixed(1)+'KB' : f.size+'B';
+      const timeClass = f.stale ? 'stale' : 'fresh';
+
+      html += '<div class="live-file-card' + isOpen + '" data-key="' + f.key + '">';
+      html += '<div class="live-file-header" onclick="this.parentElement.classList.toggle(&quot;open&quot;)">';
+      html += '<div><span class="live-file-label">' + f.label + '</span>';
+      html += '<span class="live-file-desc">' + f.desc + '</span></div>';
+
+      if (f.exists) {
+        html += '<div class="live-file-meta">';
+        html += '<span>' + sizeStr + '</span>';
+        html += '<span class="' + timeClass + '">' + f.mtime + '</span>';
+        html += '</div>';
+      } else {
+        html += '<div class="live-file-meta"><span class="stale">' + t('fileMissing') + '</span></div>';
+      }
+
+      html += '</div>';
+      if (f.exists && f.content) {
+        const escaped = f.content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        html += '<div class="live-file-content">' + escaped + '</div>';
+      } else {
+        html += '<div class="live-file-content live-file-missing">(' + t('fileMissing') + ')</div>';
+      }
+      html += '</div>';
+    });
+    el.innerHTML = html;
+  } catch(e) { console.error('live-files error:', e); }
 }
 
 async function fetchRemoteTools() {
@@ -1327,19 +2040,19 @@ async function fetchRemoteTools() {
       el.innerHTML = '<div style="color:#B0AEA5">' + t('noRemote') + '</div>';
       return;
     }
-    const icons = {pending:'⏳',running:'🔄',completed:'✅',error:'❌',timeout:'⏰'};
+    const icons = {pending:'\\u25cb',running:'\\u25ce',completed:'\\u2713',error:'\\u2717',timeout:'\\u25cc'};
     let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
     data.tasks.forEach(t => {
-      const icon = icons[t.status] || '❓';
+      const icon = t.status in icons ? icons[t.status] : '?';
       const prompt = t.prompt.length > 60 ? t.prompt.substring(0,60)+'...' : t.prompt;
       const result = t.result ? (t.result.length > 120 ? t.result.substring(0,120)+'...' : t.result) : '';
-      html += '<div style="background:#F5F4EF;padding:10px 14px;border-radius:8px;font-size:13px;">';
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;">';
-      html += '<span>' + icon + ' <strong>#' + t.id + '</strong> ' + prompt + '</span>';
-      html += '<span style="color:#B0AEA5;font-size:11px;">' + (t.created_at||'') + '</span>';
+      html += '<div style="padding:10px 0;border-bottom:1px solid #E8E6DC;font-size:13px;">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">';
+      html += '<span style="color:#3D3D3A;">' + icon + ' <span style="color:#B96748;font-weight:400;">#' + t.id + '</span> ' + prompt + '</span>';
+      html += '<span style="color:#B0AEA5;font-size:11px;white-space:nowrap;flex-shrink:0;">' + (t.created_at||'') + '</span>';
       html += '</div>';
       if (result) {
-        html += '<div style="margin-top:6px;color:#6B6962;font-size:12px;white-space:pre-wrap;max-height:120px;overflow-y:auto;">' + result.replace(/</g,'&lt;') + '</div>';
+        html += '<div style="margin-top:6px;color:#8B8780;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:80px;overflow-y:auto;">' + result.replace(/</g,'&lt;') + '</div>';
       }
       html += '</div>';
     });
@@ -1348,21 +2061,120 @@ async function fetchRemoteTools() {
   } catch(e) { console.error(e); }
 }
 
+// ─── Todos ───
+let backlogOrigContent = '';
+
+function renderTodoMarkdown(text) {
+  if (!text || !text.trim()) return '<span style="color:#B0AEA5;font-size:13px;">(empty)</span>';
+  const lines = text.split('\\n');
+  const out = [];
+  for (const raw of lines) {
+    const line = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    if (line.startsWith('&lt;!--')) continue;
+    if (/^# /.test(line)) {
+      continue;
+    } else if (/^## /.test(line)) {
+      out.push('<div style="font-weight:600;color:#6B6962;margin:6px 0 3px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;">' + line.slice(3) + '</div>');
+    } else if (/^- \\[x\\] /.test(line)) {
+      out.push('<div style="color:#B0AEA5;text-decoration:line-through;margin:2px 0;padding-left:4px;">\\u2611 ' + line.slice(6) + '</div>');
+    } else if (/^- \\[ \\] /.test(line)) {
+      out.push('<div style="color:#3D3D3A;margin:2px 0;padding-left:4px;">\\u2610 ' + line.slice(6) + '</div>');
+    } else if (/^- /.test(line)) {
+      out.push('<div style="color:#3D3D3A;margin:2px 0;padding-left:4px;">\\u2022 ' + line.slice(2) + '</div>');
+    } else if (line.trim() === '') {
+      out.push('<div style="height:4px"></div>');
+    } else {
+      out.push('<div style="color:#6B6962;font-size:12px;">' + line + '</div>');
+    }
+  }
+  return out.join('');
+}
+
+async function fetchTodos() {
+  const sysEl = document.getElementById('system-todo-content');
+  const backlogEl = document.getElementById('backlog-display');
+  try {
+    const [sysR, backlogR] = await Promise.all([
+      fetch('/api/todos/system'),
+      fetch('/api/todos/backlog'),
+    ]);
+    const sysData = await sysR.json();
+    const backlogData = await backlogR.json();
+
+    if (sysEl) sysEl.innerHTML = renderTodoMarkdown(sysData.content || '');
+    const editArea = document.getElementById('backlog-edit-area');
+    const isEditing = editArea && editArea.style.display === 'block';
+    if (!isEditing) {
+      backlogOrigContent = backlogData.content || '';
+      if (backlogEl) backlogEl.innerHTML = renderTodoMarkdown(backlogOrigContent);
+      if (editArea) editArea.value = backlogOrigContent;
+    }
+  } catch(e) {
+    console.error('todos fetch error:', e);
+    if (sysEl) sysEl.innerHTML = '<span style="color:#c0392b;font-size:12px;">Load failed</span>';
+    if (backlogEl) backlogEl.innerHTML = '<span style="color:#c0392b;font-size:12px;">Load failed</span>';
+  }
+}
+
+function toggleBacklogEdit() {
+  document.getElementById('backlog-display').style.display = 'none';
+  document.getElementById('backlog-edit-area').style.display = 'block';
+  document.getElementById('backlog-edit-area').value = backlogOrigContent;
+  document.getElementById('backlog-edit-btn').style.display = 'none';
+  document.getElementById('backlog-save-btn').style.display = 'inline-block';
+  document.getElementById('backlog-cancel-btn').style.display = 'inline-block';
+  document.getElementById('backlog-edit-area').focus();
+}
+
+function cancelBacklogEdit() {
+  document.getElementById('backlog-display').style.display = 'block';
+  document.getElementById('backlog-edit-area').style.display = 'none';
+  document.getElementById('backlog-edit-btn').style.display = 'inline-block';
+  document.getElementById('backlog-save-btn').style.display = 'none';
+  document.getElementById('backlog-cancel-btn').style.display = 'none';
+}
+
+async function saveBacklog() {
+  const content = document.getElementById('backlog-edit-area').value;
+  try {
+    const r = await fetch('/api/todos/backlog', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content}),
+    });
+    const data = await r.json();
+    if (data.ok) {
+      backlogOrigContent = content;
+      document.getElementById('backlog-display').innerHTML = renderTodoMarkdown(content);
+      cancelBacklogEdit();
+    }
+  } catch(e) { console.error('save backlog error:', e); }
+}
+
 // Init
 applyStaticI18n();
 fetchStatus();
 fetchHeatmap();
+fetchSystemStatus();
+fetchFragment();
 fetchStreamStats();
+fetchShortTermMemory();
+fetchTodos();
 searchMemories();
 fetchRemoteTools();
+fetchLiveFiles();
 setInterval(fetchStatus, 3000);
+setInterval(fetchSystemStatus, 10000);
 setInterval(fetchStreamStats, 10000);
+setInterval(fetchShortTermMemory, 5000);
+setInterval(fetchTodos, 15000);
 setInterval(fetchRemoteTools, 10000);
+setInterval(fetchLiveFiles, 10000);
 </script>
 </body>
 </html>"""
 
 
 if __name__ == "__main__":
-    print("✨ Claude Imprint Dashboard: http://localhost:3000", flush=True)
+    print("Claude Imprint Dashboard: http://localhost:3000", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=3000, log_level="warning")
