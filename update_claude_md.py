@@ -174,8 +174,8 @@ def build_auto_section():
                 parts.append(f"↑ 如果你现在在另一个渠道，注意这条消息的上下文。用户可能刚从那边过来。")
                 parts.append("")
 
-            parts.append("### 近期跨渠道上下文")
-            parts.append("\n".join(context_lines[-30:]))  # last 30 lines
+            parts.append("### 近期跨渠道上下文（最近5条，完整记录见 recent_context.md）")
+            parts.append("\n".join(context_lines[-5:]))  # last 5 lines
             parts.append("")
 
     # Recent memories

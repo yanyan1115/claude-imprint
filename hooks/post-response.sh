@@ -19,6 +19,9 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
     exit 0
 fi
 
+# Ensure imprint_memory uses the project's memory.db, not ~/.imprint/
+export IMPRINT_DATA_DIR="$SCRIPT_DIR"
+
 # Run the Python processor
 python3 "$SCRIPT_DIR/hooks/post_response_processor.py" "$TRANSCRIPT" "$SESSION_ID" "$SCRIPT_DIR" 2>> "$LOG_DIR/post-response.log"
 

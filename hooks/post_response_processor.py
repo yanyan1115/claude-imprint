@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -277,9 +278,65 @@ def regenerate_context():
     os.replace(str(tmp), str(CONTEXT_FILE))
 
 
+def catch_up_other_sessions(current_session: str):
+    """Auto-recover messages from other sessions that weren't fully processed.
+    Scans recent transcript files and backfills any unprocessed portions.
+    Only runs once per session (uses a marker file)."""
+    marker = OFFSET_DIR / f".catchup-{current_session}"
+    if marker.exists():
+        return  # Already ran catch-up for this session
+
+    try:
+        transcript_dir = Path.home() / ".claude" / "projects"
+        project_dirs = list(transcript_dir.glob("*"))
+        cutoff = time.time() - 72 * 3600  # Last 72 hours only
+
+        total_recovered = 0
+        for pdir in project_dirs:
+            for jsonl in pdir.glob("*.jsonl"):
+                # Skip current session, subagents, and old files
+                if jsonl.stem == current_session:
+                    continue
+                if "subagent" in str(jsonl):
+                    continue
+                try:
+                    if jsonl.stat().st_mtime < cutoff:
+                        continue
+                except OSError:
+                    continue
+
+                sid = jsonl.stem
+                offset = get_offset(sid)
+                try:
+                    fsize = os.path.getsize(str(jsonl))
+                except OSError:
+                    continue
+                if offset >= fsize:
+                    continue
+
+                # This session has unprocessed data — recover it
+                recovered = process_new_messages(str(jsonl), sid)
+                if recovered > 0:
+                    total_recovered += recovered
+                    print(f"Catch-up: recovered {recovered} msgs from session {sid[:8]}", file=sys.stderr)
+
+        if total_recovered > 0:
+            print(f"Catch-up complete: {total_recovered} total messages recovered", file=sys.stderr)
+
+    except Exception as e:
+        print(f"Catch-up error (non-fatal): {e}", file=sys.stderr)
+    finally:
+        # Mark catch-up as done for this session regardless of errors
+        marker.write_text(str(int(time.time())))
+
+
 def main():
     try:
         count = process_new_messages(transcript_path, session_id)
+
+        # On first run of a new session, auto-recover any missed messages
+        catch_up_other_sessions(session_id)
+
         if count > 0:
             regenerate_context()
             print(f"Processed {count} new messages, updated recent_context.md", file=sys.stderr)

@@ -16,6 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
+# Ensure imprint_memory uses the project's memory.db, not ~/.imprint/
+export IMPRINT_DATA_DIR="$SCRIPT_DIR"
+
 echo "$DATE $TIME PreCompact trigger=$TRIGGER session=$SESSION_ID" >> "$LOG_DIR/compaction.log"
 
 if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
