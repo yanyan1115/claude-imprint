@@ -380,7 +380,7 @@ async def api_memories(q: str = "", limit: int = 20):
 
 
 @app.get("/api/summaries")
-def get_summaries():
+def get_summaries(q: str = "", limit: int = 10):
     """Return recent rolling conversation summaries."""
     db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
@@ -389,14 +389,74 @@ def get_summaries():
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            "SELECT id, content, turn_count, platform, created_at FROM summaries ORDER BY created_at DESC LIMIT 10"
-        ).fetchall()
+        if q:
+            rows = conn.execute(
+                "SELECT id, content, turn_count, platform, created_at FROM summaries WHERE content LIKE ? OR platform LIKE ? ORDER BY created_at DESC LIMIT ?",
+                (f"%{q}%", f"%{q}%", limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, content, turn_count, platform, created_at FROM summaries ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
     except sqlite3.OperationalError:
         rows = []
     finally:
         conn.close()
     return [dict(r) for r in rows]
+
+
+@app.delete("/api/summaries/{summary_id}")
+async def api_delete_summary(summary_id: int):
+    """Delete a rolling conversation summary."""
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.execute("DELETE FROM summaries WHERE id = ?", (summary_id,))
+        conn.commit()
+        if cur.rowcount == 0:
+            return JSONResponse({"ok": False, "error": "summary not found"}, status_code=404)
+    except sqlite3.OperationalError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.put("/api/summaries/{summary_id}")
+async def api_update_summary(summary_id: int, request: Request):
+    """Update a rolling conversation summary."""
+    body = await request.json()
+    content = (body.get("content") or "").strip()
+    platform = (body.get("platform") or "unknown").strip() or "unknown"
+    try:
+        turn_count = int(body.get("turn_count") or 0)
+    except (TypeError, ValueError):
+        turn_count = 0
+    if not content:
+        return JSONResponse({"ok": False, "error": "content is required"}, status_code=400)
+
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.execute(
+            "UPDATE summaries SET content = ?, platform = ?, turn_count = ? WHERE id = ?",
+            (content, platform, max(turn_count, 0), summary_id),
+        )
+        conn.commit()
+        if cur.rowcount == 0:
+            return JSONResponse({"ok": False, "error": "summary not found"}, status_code=404)
+    except sqlite3.OperationalError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.delete("/api/memories/{memory_id}")
@@ -1423,6 +1483,7 @@ async def dashboard():
     </div>
     <button class="fragment-refresh" onclick="fetchSummaries()" title="Refresh">&#x21bb;</button>
   </div>
+  <input class="search-box" type="text" placeholder="搜索摘要..." id="summary-search" oninput="fetchSummaries()">
   <div id="summaries-list">Loading...</div>
 </div>
 
@@ -1460,6 +1521,22 @@ async def dashboard():
   </div>
 </div>
 
+<div class="modal-overlay" id="summary-edit-modal">
+  <div class="modal">
+    <h3>编辑摘要</h3>
+    <input type="hidden" id="summary-edit-id">
+    <textarea id="summary-edit-content"></textarea>
+    <div class="modal-row">
+      <input type="text" id="summary-edit-platform" placeholder="platform">
+      <input type="number" id="summary-edit-turn-count" min="0" placeholder="turn_count">
+    </div>
+    <div class="modal-buttons">
+      <button onclick="closeSummaryEditModal()">Cancel</button>
+      <button class="save" onclick="saveSummary()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ─── i18n ───
 const i18n = {
@@ -1487,7 +1564,10 @@ const i18n = {
     horizonTitle: 'Horizon',
     summariesTitle: '对话摘要',
     summariesSub: 'rolling summary — 跨窗口上下文',
+    summarySearchPlaceholder: '搜索摘要...',
     noSummariesPanel: '暂无摘要',
+    editSummary: '编辑摘要',
+    confirmDeleteSummary: '删除这条摘要？',
     turns: 'turns',
     memoryTitle: 'Memory',
     searchPlaceholder: 'Search memories...',
@@ -1542,7 +1622,10 @@ const i18n = {
     horizonTitle: 'Horizon 视野',
     summariesTitle: '对话摘要',
     summariesSub: 'rolling summary — 跨窗口上下文',
+    summarySearchPlaceholder: '搜索摘要...',
     noSummariesPanel: '暂无摘要',
+    editSummary: '编辑摘要',
+    confirmDeleteSummary: '确定删除这条摘要？',
     turns: 'turns',
     memoryTitle: '记忆库',
     searchPlaceholder: '搜索记忆...',
@@ -1603,15 +1686,22 @@ function applyStaticI18n() {
   if (summariesH2) summariesH2.textContent = t('summariesTitle');
   const summariesSub = document.querySelector('#summaries-section .heatmap-subtitle');
   if (summariesSub) summariesSub.textContent = t('summariesSub');
+  const summarySearch = document.getElementById('summary-search');
+  if (summarySearch) summarySearch.placeholder = t('summarySearchPlaceholder');
   const memSections = document.querySelectorAll('.memory-section h2');
   if (memSections.length >= 3) memSections[memSections.length - 1].textContent = t('memoryTitle');
   else if (memSections.length >= 1) memSections[memSections.length - 1].textContent = t('memoryTitle');
   document.getElementById('memory-search').placeholder = t('searchPlaceholder');
   document.querySelector('.modal h3').textContent = t('editMemory');
+  const summaryModalTitle = document.querySelector('#summary-edit-modal h3');
+  if (summaryModalTitle) summaryModalTitle.textContent = t('editSummary');
   document.getElementById('edit-importance').placeholder = t('importance');
   const modalBtns = document.querySelectorAll('.modal-buttons button');
   if (modalBtns[0]) modalBtns[0].textContent = t('cancel');
   if (modalBtns[1]) modalBtns[1].textContent = t('save');
+  const summaryModalBtns = document.querySelectorAll('#summary-edit-modal .modal-buttons button');
+  if (summaryModalBtns[0]) summaryModalBtns[0].textContent = t('cancel');
+  if (summaryModalBtns[1]) summaryModalBtns[1].textContent = t('save');
   const infoLabels = document.querySelectorAll('.info-chip .label');
   if (infoLabels[0]) infoLabels[0].textContent = t('tunnelUrl');
   if (infoLabels[1]) infoLabels[1].textContent = t('memories');
@@ -1762,13 +1852,16 @@ function escapeHtml(text) {
 
 async function fetchSummaries() {
   try {
-    const r = await fetch('/api/summaries');
+    const q = document.getElementById('summary-search')?.value || '';
+    const r = await fetch(`/api/summaries?q=${encodeURIComponent(q)}&limit=10`);
     const summaries = await r.json();
     renderSummaries(summaries);
   } catch(e) { console.error('summaries fetch error:', e); }
 }
 
+let allSummaries = [];
 function renderSummaries(summaries) {
+  allSummaries = summaries || [];
   const list = document.getElementById('summaries-list');
   if (!list) return;
   if (!summaries || !summaries.length) {
@@ -1779,9 +1872,54 @@ function renderSummaries(summaries) {
     const turns = (s.turn_count || 0) > 0 ? ' · ' + s.turn_count + ' ' + t('turns') : '';
     return '<div class="memory-item">'
       + '<div class="memory-meta">[' + escapeHtml(s.platform || 'unknown') + '] ' + escapeHtml(s.created_at || '') + turns + '</div>'
-      + '<div style="margin-top:6px;white-space:pre-wrap;line-height:1.6;">' + escapeHtml(s.content) + '</div>'
+      + '<div style="padding-right:80px;margin-top:6px;white-space:pre-wrap;line-height:1.6;">' + escapeHtml(s.content) + '</div>'
+      + '<div class="memory-actions">'
+      + '<button onclick="openSummaryEditModal(' + s.id + ')">' + t('edit') + '</button>'
+      + '<button class="del" onclick="deleteSummary(' + s.id + ')">' + t('delete') + '</button>'
+      + '</div>'
       + '</div>';
   }).join('');
+}
+
+async function deleteSummary(id) {
+  if (!confirm(t('confirmDeleteSummary'))) return;
+  await fetch('/api/summaries/' + id, {method: 'DELETE'});
+  fetchSummaries();
+}
+
+function openSummaryEditModal(id) {
+  const s = allSummaries.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('summary-edit-id').value = s.id;
+  document.getElementById('summary-edit-content').value = s.content || '';
+  document.getElementById('summary-edit-platform').value = s.platform || 'unknown';
+  document.getElementById('summary-edit-turn-count').value = s.turn_count || 0;
+  document.getElementById('summary-edit-modal').classList.add('active');
+}
+
+function closeSummaryEditModal() {
+  document.getElementById('summary-edit-modal').classList.remove('active');
+}
+
+async function saveSummary() {
+  const id = document.getElementById('summary-edit-id').value;
+  const body = {
+    content: document.getElementById('summary-edit-content').value,
+    platform: document.getElementById('summary-edit-platform').value,
+    turn_count: parseInt(document.getElementById('summary-edit-turn-count').value) || 0,
+  };
+  const r = await fetch('/api/summaries/' + id, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) {
+    alert(data.error || t('actionFailed'));
+    return;
+  }
+  closeSummaryEditModal();
+  fetchSummaries();
 }
 
 async function searchMemories() {
