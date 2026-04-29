@@ -379,6 +379,26 @@ async def api_memories(q: str = "", limit: int = 20):
     return {"memories": [dict(r) for r in rows]}
 
 
+@app.get("/api/summaries")
+def get_summaries():
+    """Return recent rolling conversation summaries."""
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return []
+    import sqlite3
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, content, turn_count, platform, created_at FROM summaries ORDER BY created_at DESC LIMIT 10"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
+
+
 @app.delete("/api/memories/{memory_id}")
 async def api_delete_memory(memory_id: int):
     """Delete a memory"""
@@ -1395,6 +1415,17 @@ async def dashboard():
   <div id="remote-tools" style="margin-top:12px;max-height:400px;overflow-y:scroll;">Loading...</div>
 </div>
 
+<div class="memory-section" id="summaries-section">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;">
+    <div>
+      <h2 style="margin-bottom:4px;">对话摘要</h2>
+      <div class="heatmap-subtitle">rolling summary — 跨窗口上下文</div>
+    </div>
+    <button class="fragment-refresh" onclick="fetchSummaries()" title="Refresh">&#x21bb;</button>
+  </div>
+  <div id="summaries-list">Loading...</div>
+</div>
+
 <div class="memory-section">
   <h2>Memory</h2>
   <input class="search-box" type="text" placeholder="Search memories..." id="memory-search" oninput="searchMemories()">
@@ -1454,6 +1485,10 @@ const i18n = {
     streamToday: 'today',
     streamLast: 'Latest',
     horizonTitle: 'Horizon',
+    summariesTitle: '对话摘要',
+    summariesSub: 'rolling summary — 跨窗口上下文',
+    noSummariesPanel: '暂无摘要',
+    turns: 'turns',
     memoryTitle: 'Memory',
     searchPlaceholder: 'Search memories...',
     noMemories: 'No memories yet',
@@ -1505,6 +1540,10 @@ const i18n = {
     streamToday: '条今日',
     streamLast: '最新',
     horizonTitle: 'Horizon 视野',
+    summariesTitle: '对话摘要',
+    summariesSub: 'rolling summary — 跨窗口上下文',
+    noSummariesPanel: '暂无摘要',
+    turns: 'turns',
     memoryTitle: '记忆库',
     searchPlaceholder: '搜索记忆...',
     noMemories: '暂无记忆',
@@ -1560,6 +1599,10 @@ function applyStaticI18n() {
   if (streamSub) streamSub.textContent = t('streamSub');
   const stmH2 = document.querySelector('#stm-section h2');
   if (stmH2) stmH2.textContent = t('horizonTitle');
+  const summariesH2 = document.querySelector('#summaries-section h2');
+  if (summariesH2) summariesH2.textContent = t('summariesTitle');
+  const summariesSub = document.querySelector('#summaries-section .heatmap-subtitle');
+  if (summariesSub) summariesSub.textContent = t('summariesSub');
   const memSections = document.querySelectorAll('.memory-section h2');
   if (memSections.length >= 3) memSections[memSections.length - 1].textContent = t('memoryTitle');
   else if (memSections.length >= 1) memSections[memSections.length - 1].textContent = t('memoryTitle');
@@ -1606,6 +1649,7 @@ function refreshAll() {
   fetchSystemStatus();
   fetchFragment();
   fetchStreamStats();
+  fetchSummaries();
   fetchShortTermMemory();
   fetchTodos();
   searchMemories();
@@ -1707,6 +1751,37 @@ async function toggleLog(key) {
   box.textContent = data.logs;
   box.style.display = 'block';
   box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+async function fetchSummaries() {
+  try {
+    const r = await fetch('/api/summaries');
+    const summaries = await r.json();
+    renderSummaries(summaries);
+  } catch(e) { console.error('summaries fetch error:', e); }
+}
+
+function renderSummaries(summaries) {
+  const list = document.getElementById('summaries-list');
+  if (!list) return;
+  if (!summaries || !summaries.length) {
+    list.innerHTML = '<div style="color:#B0AEA5;padding:12px 0;text-align:center">' + t('noSummariesPanel') + '</div>';
+    return;
+  }
+  list.innerHTML = summaries.map(s => {
+    const turns = (s.turn_count || 0) > 0 ? ' · ' + s.turn_count + ' ' + t('turns') : '';
+    return '<div class="memory-item">'
+      + '<div class="memory-meta">[' + escapeHtml(s.platform || 'unknown') + '] ' + escapeHtml(s.created_at || '') + turns + '</div>'
+      + '<div style="margin-top:6px;white-space:pre-wrap;line-height:1.6;">' + escapeHtml(s.content) + '</div>'
+      + '</div>';
+  }).join('');
 }
 
 async function searchMemories() {
@@ -2158,6 +2233,7 @@ fetchHeatmap();
 fetchSystemStatus();
 fetchFragment();
 fetchStreamStats();
+fetchSummaries();
 fetchShortTermMemory();
 fetchTodos();
 searchMemories();
@@ -2166,6 +2242,7 @@ fetchLiveFiles();
 setInterval(fetchStatus, 3000);
 setInterval(fetchSystemStatus, 10000);
 setInterval(fetchStreamStats, 10000);
+setInterval(fetchSummaries, 10000);
 setInterval(fetchShortTermMemory, 5000);
 setInterval(fetchTodos, 15000);
 setInterval(fetchRemoteTools, 10000);
