@@ -10,6 +10,7 @@ import subprocess
 import signal
 import json
 import shutil
+import sqlite3
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -356,27 +357,189 @@ async def api_heatmap():
     return {"days": get_heatmap_data()}
 
 
+MEMORY_FIELD_DEFAULTS = {
+    "id": None,
+    "content": "",
+    "category": "general",
+    "source": "",
+    "importance": 5,
+    "created_at": None,
+    "valence": 0.5,
+    "arousal": 0.3,
+    "resolved": False,
+    "decay_rate": None,
+    "pinned": False,
+    "activation_count": 1,
+    "last_active": None,
+}
+MEMORY_OPTIONAL_FIELDS = ("archived", "is_archived", "decay_score", "status")
+
+
+def _table_columns(conn, table):
+    """Return SQLite column names for a table; empty set means missing table."""
+    try:
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    except sqlite3.OperationalError:
+        return set()
+
+
+def _sql_literal(value):
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _clamp_float(value, min_value, max_value, default):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(max_value, value))
+
+
+def _clamp_int(value, min_value, max_value, default):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(max_value, value))
+
+
+def _as_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+    return bool(value)
+
+
+def _memory_is_archived(memory):
+    status = str(memory.get("status") or "")
+    normalized = status.strip().lower().replace("-", "_")
+    return (
+        _as_bool(memory.get("archived"), False)
+        or _as_bool(memory.get("is_archived"), False)
+        or normalized in {"archived", "archive", "is_archived"}
+    )
+
+
+def _memory_decay_status(memory):
+    category = str(memory.get("category") or "").lower()
+    decay_rate = memory.get("decay_rate")
+    try:
+        decay_rate_value = float(decay_rate) if decay_rate is not None else None
+    except (TypeError, ValueError):
+        decay_rate_value = None
+    if _memory_is_archived(memory):
+        return {"key": "archived", "label": "Archived", "zh": "已归档"}
+    protected = (
+        _as_bool(memory.get("pinned"), False)
+        or category == "core_profile"
+        or decay_rate_value == 0.0
+    )
+    if protected:
+        return {"key": "protected", "label": "Protected", "zh": "不衰减"}
+    if not _as_bool(memory.get("resolved"), False) and float(memory.get("arousal") or 0) >= 0.7:
+        return {"key": "surfacing", "label": "Surfacing", "zh": "主动浮现候选"}
+    if _as_bool(memory.get("resolved"), False):
+        return {"key": "resolved", "label": "Resolved", "zh": "已解决"}
+    decay_score = memory.get("decay_score")
+    try:
+        if decay_score is not None and float(decay_score) < 0.3:
+            return {"key": "low_score", "label": "Low score", "zh": "低分"}
+    except (TypeError, ValueError):
+        pass
+    return {"key": "decaying", "label": "Decaying", "zh": "衰减中"}
+
+
+def _fetch_memories(q="", limit=20, max_limit=100):
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return []
+    limit = _clamp_int(limit, 1, max_limit, 20)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        columns = _table_columns(conn, "memories")
+        if not columns:
+            return []
+        select_fields = []
+        for field, default in MEMORY_FIELD_DEFAULTS.items():
+            if field in columns:
+                select_fields.append(field)
+            else:
+                select_fields.append(f"{_sql_literal(default)} AS {field}")
+        for field in MEMORY_OPTIONAL_FIELDS:
+            if field in columns:
+                select_fields.append(field)
+
+        order_col = "created_at" if "created_at" in columns else "id"
+        sql = f"SELECT {', '.join(select_fields)} FROM memories"
+        params = []
+        if q and "content" in columns:
+            sql += " WHERE content LIKE ?"
+            params.append(f"%{q}%")
+        elif q:
+            return []
+        sql += f" ORDER BY {order_col} DESC LIMIT ?"
+        params.append(limit)
+
+        rows = conn.execute(sql, params).fetchall()
+        memories = []
+        for row in rows:
+            memory = dict(row)
+            memory["valence"] = _clamp_float(memory.get("valence"), 0.0, 1.0, 0.5)
+            memory["arousal"] = _clamp_float(memory.get("arousal"), 0.0, 1.0, 0.3)
+            memory["resolved"] = _as_bool(memory.get("resolved"), False)
+            memory["pinned"] = _as_bool(memory.get("pinned"), False)
+            memory["activation_count"] = _clamp_int(memory.get("activation_count"), 0, 10**9, 1)
+            memory["decay_status"] = _memory_decay_status(memory)
+            memories.append(memory)
+        return memories
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
 @app.get("/api/memories")
 async def api_memories(q: str = "", limit: int = 20):
     """Search or list memories"""
-    db_path = DATA_DIR / "memory.db"
-    if not db_path.exists():
-        return {"memories": []}
-    import sqlite3
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    if q:
-        rows = conn.execute(
-            "SELECT id, content, category, source, importance, created_at FROM memories WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?",
-            (f"%{q}%", limit)
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT id, content, category, source, importance, created_at FROM memories ORDER BY created_at DESC LIMIT ?",
-            (limit,)
-        ).fetchall()
-    conn.close()
-    return {"memories": [dict(r) for r in rows]}
+    return {"memories": _fetch_memories(q=q, limit=limit)}
+
+
+@app.get("/api/decay-status")
+async def api_decay_status():
+    """Return lightweight Phase 3 decay/status counters for the dashboard."""
+    memories = _fetch_memories(limit=100000, max_limit=100000)
+    stats = {
+        "total": len(memories),
+        "protected": 0,
+        "surfacing": 0,
+        "resolved": 0,
+        "archived": 0,
+        "decaying": 0,
+        "low_score": 0,
+    }
+    for memory in memories:
+        key = memory.get("decay_status", {}).get("key", "decaying")
+        if key in {"protected", "decaying", "low_score"}:
+            stats[key] += 1
+        if _as_bool(memory.get("resolved"), False):
+            stats["resolved"] += 1
+        if _memory_is_archived(memory):
+            stats["archived"] += 1
+        if not _as_bool(memory.get("resolved"), False) and float(memory.get("arousal") or 0) >= 0.7:
+            stats["surfacing"] += 1
+    return stats
 
 
 @app.get("/api/summaries")
@@ -385,7 +548,7 @@ def get_summaries(q: str = "", limit: int = 10):
     db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
         return []
-    import sqlite3
+    limit = _clamp_int(limit, 1, 100, 10)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -472,14 +635,67 @@ async def api_delete_memory(memory_id: int):
 async def api_update_memory(memory_id: int, request: Request):
     """Update a memory"""
     body = await request.json()
-    content = body.get("content", "")
-    category = body.get("category", "")
-    importance = body.get("importance", 5)
-    result = mem.update_memory(memory_id, content=content, category=category, importance=importance)
-    if not result.get("ok"):
-        status_code = 404 if "not found" in result.get("error", "").lower() else 400
-        return JSONResponse(result, status_code=status_code)
-    return result
+    db_path = DATA_DIR / "memory.db"
+    if not db_path.exists():
+        return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
+
+    core_fields = {"content", "category", "importance"}
+    if any(field in body for field in core_fields):
+        content = (body.get("content") or "").strip()
+        category = (body.get("category") or "general").strip() or "general"
+        importance = _clamp_int(body.get("importance"), 1, 10, 5)
+        if not content:
+            return JSONResponse({"ok": False, "error": "content is required"}, status_code=400)
+        result = mem.update_memory(memory_id, content=content, category=category, importance=importance)
+        if not result.get("ok"):
+            status_code = 404 if "not found" in result.get("error", "").lower() else 400
+            return JSONResponse({"ok": False, "error": result.get("error", "update failed")}, status_code=status_code)
+
+    conn = sqlite3.connect(str(db_path))
+    try:
+        columns = _table_columns(conn, "memories")
+        if not columns:
+            return JSONResponse({"ok": False, "error": "memories table not found"}, status_code=404)
+        exists = conn.execute("SELECT 1 FROM memories WHERE id = ? LIMIT 1", (memory_id,)).fetchone()
+        if not exists:
+            return JSONResponse({"ok": False, "error": "memory not found"}, status_code=404)
+
+        updates = []
+        params = []
+        if "valence" in body and "valence" in columns:
+            updates.append("valence = ?")
+            params.append(_clamp_float(body.get("valence"), 0.0, 1.0, 0.5))
+        if "arousal" in body and "arousal" in columns:
+            updates.append("arousal = ?")
+            params.append(_clamp_float(body.get("arousal"), 0.0, 1.0, 0.3))
+        if "resolved" in body and "resolved" in columns:
+            updates.append("resolved = ?")
+            params.append(1 if _as_bool(body.get("resolved"), False) else 0)
+        if "pinned" in body and "pinned" in columns:
+            updates.append("pinned = ?")
+            params.append(1 if _as_bool(body.get("pinned"), False) else 0)
+        if "decay_rate" in body and "decay_rate" in columns:
+            raw_decay_rate = body.get("decay_rate")
+            if raw_decay_rate == "" or raw_decay_rate is None:
+                updates.append("decay_rate = ?")
+                params.append(None)
+            else:
+                try:
+                    decay_rate = max(0.0, float(raw_decay_rate))
+                except (TypeError, ValueError):
+                    return JSONResponse({"ok": False, "error": "decay_rate must be a non-negative number"}, status_code=400)
+                updates.append("decay_rate = ?")
+                params.append(decay_rate)
+
+        if updates:
+            params.append(memory_id)
+            conn.execute(f"UPDATE memories SET {', '.join(updates)} WHERE id = ?", params)
+            conn.commit()
+    except sqlite3.OperationalError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    finally:
+        conn.close()
+    return {"ok": True}
 
 
 @app.get("/api/stream-stats")
@@ -924,6 +1140,50 @@ async def dashboard():
   .memory-item:last-child { border-bottom: none; }
   .memory-item:hover .memory-actions { opacity: 1; }
   .memory-meta { color: #B0AEA5; font-size: 11px; margin-top: 2px; }
+  .memory-content {
+    padding-right: 90px;
+    white-space: pre-wrap;
+    line-height: 1.55;
+  }
+  .memory-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+    padding-right: 90px;
+  }
+  .memory-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid #E8E6DC;
+    color: #6B6962;
+    background: #FAF9F5;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .memory-badge.protected { border-color: #8FBC8F; color: #2B8A3E; background: #F4FBF3; }
+  .memory-badge.surfacing { border-color: #E3A44D; color: #9A5A00; background: #FFF7E8; font-weight: 600; }
+  .memory-badge.resolved { border-color: #9FB9D9; color: #386FA4; background: #F2F7FC; }
+  .memory-badge.archived, .memory-badge.low_score { border-color: #C9C6BC; color: #7A766B; background: #F2F1EC; }
+  .memory-badge.decaying { border-color: #DDA58A; color: #B96748; background: #FFF8F0; }
+  .decay-stat-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 10px;
+  }
+  .decay-stat-chip {
+    border: 1px solid #E8E6DC;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    color: #6B6962;
+    background: #FAF9F5;
+  }
+  .decay-stat-chip strong { color: #B96748; font-weight: 600; }
   .memory-actions {
     opacity: 0;
     transition: opacity 0.15s;
@@ -983,6 +1243,28 @@ async def dashboard():
     border-radius: 6px;
     font-size: 13px;
     color: #3D3D3A;
+  }
+  .modal-field { flex: 1; min-width: 0; }
+  .modal-field label {
+    display: block;
+    color: #B0AEA5;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  .modal-field input, .modal-field select {
+    width: 100%;
+  }
+  .modal-checks {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    color: #6B6962;
+    font-size: 13px;
+  }
+  .modal-checks label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .modal-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   .modal-buttons button {
@@ -1487,8 +1769,9 @@ async def dashboard():
   <div id="summaries-list">Loading...</div>
 </div>
 
-<div class="memory-section">
+<div class="memory-section" id="memory-section">
   <h2>Memory</h2>
+  <div class="decay-stat-row" id="decay-status">Loading...</div>
   <input class="search-box" type="text" placeholder="Search memories..." id="memory-search" oninput="searchMemories()">
   <div id="memory-list" style="max-height:500px;overflow-y:auto;"></div>
 </div>
@@ -1506,6 +1789,10 @@ async def dashboard():
     <textarea id="edit-content"></textarea>
     <div class="modal-row">
       <select id="edit-category">
+        <option value="core_profile">core_profile</option>
+        <option value="task_state">task_state</option>
+        <option value="episode">episode</option>
+        <option value="atomic">atomic</option>
         <option value="facts">facts</option>
         <option value="events">events</option>
         <option value="tasks">tasks</option>
@@ -1513,6 +1800,24 @@ async def dashboard():
         <option value="general">general</option>
       </select>
       <input type="number" id="edit-importance" min="1" max="10" placeholder="Importance 1-10">
+    </div>
+    <div class="modal-row">
+      <div class="modal-field">
+        <label for="edit-valence">valence</label>
+        <input type="number" id="edit-valence" min="0" max="1" step="0.05">
+      </div>
+      <div class="modal-field">
+        <label for="edit-arousal">arousal</label>
+        <input type="number" id="edit-arousal" min="0" max="1" step="0.05">
+      </div>
+      <div class="modal-field">
+        <label for="edit-decay-rate">decay_rate</label>
+        <input type="number" id="edit-decay-rate" min="0" step="0.01">
+      </div>
+    </div>
+    <div class="modal-checks">
+      <label><input type="checkbox" id="edit-resolved"> resolved</label>
+      <label><input type="checkbox" id="edit-pinned"> pinned</label>
     </div>
     <div class="modal-buttons">
       <button onclick="closeEditModal()">Cancel</button>
@@ -1844,16 +2149,19 @@ async function toggleLog(key) {
 }
 
 function escapeHtml(text) {
-  return String(text || '')
+  return String(text === null || text === undefined ? '' : text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function fetchSummaries() {
   try {
     const q = document.getElementById('summary-search')?.value || '';
     const r = await fetch(`/api/summaries?q=${encodeURIComponent(q)}&limit=10`);
+    if (!r.ok) throw new Error('summary fetch failed');
     const summaries = await r.json();
     renderSummaries(summaries);
   } catch(e) { console.error('summaries fetch error:', e); }
@@ -1883,7 +2191,12 @@ function renderSummaries(summaries) {
 
 async function deleteSummary(id) {
   if (!confirm(t('confirmDeleteSummary'))) return;
-  await fetch('/api/summaries/' + id, {method: 'DELETE'});
+  const r = await fetch('/api/summaries/' + id, {method: 'DELETE'});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) {
+    alert(data.error || t('actionFailed'));
+    return;
+  }
   fetchSummaries();
 }
 
@@ -1923,35 +2236,81 @@ async function saveSummary() {
 }
 
 async function searchMemories() {
-  const q = document.getElementById('memory-search').value;
-  const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&limit=20`);
-  const data = await r.json();
-  renderMemories(data.memories);
+  try {
+    const q = document.getElementById('memory-search').value;
+    const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&limit=20`);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'memory fetch failed');
+    renderMemories(data.memories || []);
+    fetchDecayStatus();
+  } catch(e) {
+    console.error('memory fetch error:', e);
+  }
 }
 
 let allMemories = [];
+function formatMemoryNumber(value, digits = 2) {
+  if (value === null || value === undefined || value === '') return '-';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  return n.toFixed(digits).replace(/\.?0+$/, '');
+}
+
+function memoryDecayStatus(m) {
+  const ds = m.decay_status || {key: 'decaying', label: 'Decaying', zh: '衰减中'};
+  return {
+    key: ds.key || 'decaying',
+    label: lang === 'zh' ? (ds.zh || ds.label || ds.key) : (ds.label || ds.key),
+  };
+}
+
 function renderMemories(memories) {
-  allMemories = memories;
+  allMemories = memories || [];
   const list = document.getElementById('memory-list');
-  if (!memories.length) {
+  if (!allMemories.length) {
     list.innerHTML = '<div style="color:#666;padding:20px;text-align:center">' + t('noMemories') + '</div>';
     return;
   }
-  list.innerHTML = memories.map(m => `
-    <div class="memory-item">
-      <div style="padding-right:80px;">${m.content.replace(/</g,'&lt;')}</div>
-      <div class="memory-meta">[${m.category}|${m.source}] ${m.created_at} · importance ${m.importance}</div>
-      <div class="memory-actions">
-        <button onclick="openEditModal(${m.id})">${t('edit')}</button>
-        <button class="del" onclick="deleteMemory(${m.id})">${t('delete')}</button>
+  list.innerHTML = allMemories.map(m => {
+    const ds = memoryDecayStatus(m);
+    const resolved = m.resolved ? (lang === 'zh' ? '已解决' : 'resolved') : (lang === 'zh' ? '未解决' : 'open');
+    const pinned = m.pinned ? (lang === 'zh' ? 'pinned 是' : 'pinned yes') : (lang === 'zh' ? 'pinned 否' : 'pinned no');
+    const lastActive = m.last_active ? escapeHtml(m.last_active) : '-';
+    const decayRate = m.decay_rate === null || m.decay_rate === undefined ? '-' : formatMemoryNumber(m.decay_rate, 3);
+    const activationCount = m.activation_count === null || m.activation_count === undefined ? '-' : m.activation_count;
+    const meta = '[' + escapeHtml(m.category || 'general') + '|' + escapeHtml(m.source || '') + '] '
+      + escapeHtml(m.created_at || '') + ' · importance ' + escapeHtml(m.importance || 5);
+    return `
+      <div class="memory-item">
+        <div class="memory-content">${escapeHtml(m.content || '')}</div>
+        <div class="memory-meta">${meta}</div>
+        <div class="memory-badges">
+          <span class="memory-badge ${escapeHtml(ds.key)}">${escapeHtml(ds.label)}</span>
+          <span class="memory-badge">V ${formatMemoryNumber(m.valence)}</span>
+          <span class="memory-badge">A ${formatMemoryNumber(m.arousal)}</span>
+          <span class="memory-badge">${resolved}</span>
+          <span class="memory-badge">${pinned}</span>
+          <span class="memory-badge">decay ${decayRate}</span>
+          <span class="memory-badge">act ${escapeHtml(activationCount)}</span>
+          <span class="memory-badge">last ${lastActive}</span>
+        </div>
+        <div class="memory-actions">
+          <button onclick="openEditModal(${m.id})">${t('edit')}</button>
+          <button class="del" onclick="deleteMemory(${m.id})">${t('delete')}</button>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function deleteMemory(id) {
   if (!confirm(t('confirmDelete'))) return;
-  await fetch('/api/memories/' + id, {method: 'DELETE'});
+  const r = await fetch('/api/memories/' + id, {method: 'DELETE'});
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) {
+    alert(data.error || t('actionFailed'));
+    return;
+  }
   searchMemories();
 }
 
@@ -1959,9 +2318,21 @@ function openEditModal(id) {
   const m = allMemories.find(x => x.id === id);
   if (!m) return;
   document.getElementById('edit-id').value = m.id;
-  document.getElementById('edit-content').value = m.content;
-  document.getElementById('edit-category').value = m.category;
-  document.getElementById('edit-importance').value = m.importance;
+  document.getElementById('edit-content').value = m.content || '';
+  const categorySelect = document.getElementById('edit-category');
+  if (![...categorySelect.options].some(o => o.value === (m.category || 'general'))) {
+    const option = document.createElement('option');
+    option.value = m.category || 'general';
+    option.textContent = m.category || 'general';
+    categorySelect.appendChild(option);
+  }
+  categorySelect.value = m.category || 'general';
+  document.getElementById('edit-importance').value = m.importance || 5;
+  document.getElementById('edit-valence').value = formatMemoryNumber(m.valence ?? 0.5);
+  document.getElementById('edit-arousal').value = formatMemoryNumber(m.arousal ?? 0.3);
+  document.getElementById('edit-resolved').checked = !!m.resolved;
+  document.getElementById('edit-pinned').checked = !!m.pinned;
+  document.getElementById('edit-decay-rate').value = m.decay_rate === null || m.decay_rate === undefined ? '' : formatMemoryNumber(m.decay_rate, 3);
   document.getElementById('edit-modal').classList.add('active');
 }
 
@@ -1975,14 +2346,40 @@ async function saveMemory() {
     content: document.getElementById('edit-content').value,
     category: document.getElementById('edit-category').value,
     importance: parseInt(document.getElementById('edit-importance').value) || 5,
+    valence: parseFloat(document.getElementById('edit-valence').value),
+    arousal: parseFloat(document.getElementById('edit-arousal').value),
+    resolved: document.getElementById('edit-resolved').checked,
+    pinned: document.getElementById('edit-pinned').checked,
+    decay_rate: document.getElementById('edit-decay-rate').value,
   };
-  await fetch('/api/memories/' + id, {
+  const r = await fetch('/api/memories/' + id, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(body),
   });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || data.ok === false) {
+    alert(data.error || t('actionFailed'));
+    return;
+  }
   closeEditModal();
   searchMemories();
+}
+
+async function fetchDecayStatus() {
+  try {
+    const el = document.getElementById('decay-status');
+    if (!el) return;
+    const r = await fetch('/api/decay-status');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'decay status fetch failed');
+    const labels = lang === 'zh'
+      ? [['total','总数'], ['protected','保护'], ['surfacing','主动浮现'], ['resolved','已解决'], ['archived','已归档'], ['low_score','低分'], ['decaying','衰减中']]
+      : [['total','total'], ['protected','protected'], ['surfacing','surfacing'], ['resolved','resolved'], ['archived','archived'], ['low_score','low score'], ['decaying','decaying']];
+    el.innerHTML = labels.map(([key, label]) => '<span class="decay-stat-chip">' + escapeHtml(label) + ' <strong>' + escapeHtml(data[key] || 0) + '</strong></span>').join('');
+  } catch(e) {
+    console.error('decay status error:', e);
+  }
 }
 
 async function fetchSystemStatus() {
