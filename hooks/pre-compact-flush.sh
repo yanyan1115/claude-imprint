@@ -16,8 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-# Ensure imprint_memory uses the project's memory.db, not ~/.imprint/
-export IMPRINT_DATA_DIR="$SCRIPT_DIR"
+# Use configured data dir, defaulting to the shared imprint home.
+export IMPRINT_DATA_DIR="${IMPRINT_DATA_DIR:-$HOME/.imprint}"
+mkdir -p "$IMPRINT_DATA_DIR"
 
 echo "$DATE $TIME PreCompact trigger=$TRIGGER session=$SESSION_ID" >> "$LOG_DIR/compaction.log"
 

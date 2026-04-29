@@ -145,7 +145,9 @@ def build_auto_section():
     ]
 
     # Cross-channel recent context
-    context_file = PROJECT_DIR / "recent_context.md"
+    context_file = DATA_DIR / "recent_context.md"
+    if not context_file.exists():
+        context_file = PROJECT_DIR / "recent_context.md"
     if context_file.exists():
         context_text = context_file.read_text(encoding="utf-8").strip()
         # Strip HTML comments

@@ -25,9 +25,11 @@ from imprint_memory.conversation import log_message, get_recent, format_recent
 from imprint_memory.db import now_str
 
 # ─── Config ───────────────────────────────────────────────
+DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(Path.home() / ".imprint")))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 OFFSET_DIR = Path(project_dir) / "logs"
 OFFSET_DIR.mkdir(parents=True, exist_ok=True)
-CONTEXT_FILE = Path(project_dir) / "recent_context.md"
+CONTEXT_FILE = DATA_DIR / "recent_context.md"
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 SUMMARIZE_MODEL = os.environ.get("COMPRESS_MODEL", "goekdenizguelmez/JOSIEFIED-Qwen3:8b")

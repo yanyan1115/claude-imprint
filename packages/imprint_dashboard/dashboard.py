@@ -572,21 +572,11 @@ def get_summaries(q: str = "", limit: int = 10):
 @app.delete("/api/summaries/{summary_id}")
 async def api_delete_summary(summary_id: int):
     """Delete a rolling conversation summary."""
-    db_path = DATA_DIR / "memory.db"
-    if not db_path.exists():
-        return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
-    import sqlite3
-    conn = sqlite3.connect(str(db_path))
-    try:
-        cur = conn.execute("DELETE FROM summaries WHERE id = ?", (summary_id,))
-        conn.commit()
-        if cur.rowcount == 0:
-            return JSONResponse({"ok": False, "error": "summary not found"}, status_code=404)
-    except sqlite3.OperationalError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
-    finally:
-        conn.close()
-    return {"ok": True}
+    result = mem.delete_summary(summary_id)
+    if not result.get("ok"):
+        status_code = 404 if "not found" in result.get("error", "").lower() else 400
+        return JSONResponse(result, status_code=status_code)
+    return result
 
 
 @app.put("/api/summaries/{summary_id}")
@@ -599,27 +589,16 @@ async def api_update_summary(summary_id: int, request: Request):
         turn_count = int(body.get("turn_count") or 0)
     except (TypeError, ValueError):
         turn_count = 0
-    if not content:
-        return JSONResponse({"ok": False, "error": "content is required"}, status_code=400)
-
-    db_path = DATA_DIR / "memory.db"
-    if not db_path.exists():
-        return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
-    import sqlite3
-    conn = sqlite3.connect(str(db_path))
-    try:
-        cur = conn.execute(
-            "UPDATE summaries SET content = ?, platform = ?, turn_count = ? WHERE id = ?",
-            (content, platform, max(turn_count, 0), summary_id),
-        )
-        conn.commit()
-        if cur.rowcount == 0:
-            return JSONResponse({"ok": False, "error": "summary not found"}, status_code=404)
-    except sqlite3.OperationalError as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
-    finally:
-        conn.close()
-    return {"ok": True}
+    result = mem.update_summary(
+        summary_id=summary_id,
+        content=content,
+        turn_count=turn_count,
+        platform=platform,
+    )
+    if not result.get("ok"):
+        status_code = 404 if "not found" in result.get("error", "").lower() else 400
+        return JSONResponse(result, status_code=status_code)
+    return result
 
 
 @app.delete("/api/memories/{memory_id}")

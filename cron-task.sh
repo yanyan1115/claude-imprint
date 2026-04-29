@@ -15,7 +15,9 @@ TASK_NAME="${1:?Usage: cron-task.sh <task-name> <prompt-file>}"
 PROMPT_FILE="${2:?Usage: cron-task.sh <task-name> <prompt-file>}"
 PROJECT_DIR="${IMPRINT_PROJECT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 LOG_DIR="$PROJECT_DIR/logs"
-CONTEXT_FILE="$PROJECT_DIR/recent_context.md"
+export IMPRINT_DATA_DIR="${IMPRINT_DATA_DIR:-$HOME/.imprint}"
+mkdir -p "$IMPRINT_DATA_DIR"
+CONTEXT_FILE="$IMPRINT_DATA_DIR/recent_context.md"
 # Use cron-mcp-full.json if available (includes telegram + utils tools),
 # otherwise fall back to cron-mcp.json (memory only).
 if [ -f "$PROJECT_DIR/cron-mcp-full.json" ]; then

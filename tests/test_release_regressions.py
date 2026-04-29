@@ -1,8 +1,11 @@
 import json
+import importlib.util
 import sqlite3
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -106,6 +109,65 @@ class ChatCleanerReleaseTests(unittest.TestCase):
         self.assertEqual(len(sessions[0]), 2)
         self.assertIsNone(sessions[0][0]["ts"].tzinfo)
         self.assertEqual(sessions[0][0]["ts"], sessions[0][1]["ts"])
+
+
+class CompressContextWrapperTests(unittest.TestCase):
+    def test_wrapper_delegates_to_compress_file(self):
+        script_path = Path(__file__).parent.parent / "scripts" / "compress_context.py"
+        spec = importlib.util.spec_from_file_location("compress_context_wrapper", script_path)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
+            f.write("[one]\n[two]\n")
+            context_path = Path(f.name)
+
+        calls = []
+        fake_compress = types.ModuleType("imprint_memory.compress")
+        fake_compress.compress_file = lambda path: calls.append(path)
+        fake_package = types.ModuleType("imprint_memory")
+        fake_package.compress = fake_compress
+
+        try:
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "imprint_memory": fake_package,
+                    "imprint_memory.compress": fake_compress,
+                },
+            ), mock.patch.object(sys, "argv", ["compress_context.py", str(context_path)]):
+                module.main()
+        finally:
+            context_path.unlink(missing_ok=True)
+
+        self.assertEqual(calls, [context_path])
+
+
+class DataDirPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(__file__).parent.parent
+
+    def test_hooks_respect_existing_imprint_data_dir(self):
+        for rel_path in ["hooks/post-response.sh", "hooks/pre-compact-flush.sh"]:
+            text = (self.root / rel_path).read_text(encoding="utf-8")
+            self.assertIn('export IMPRINT_DATA_DIR="${IMPRINT_DATA_DIR:-$HOME/.imprint}"', text)
+            self.assertNotIn('export IMPRINT_DATA_DIR="$SCRIPT_DIR"', text)
+
+    def test_recent_context_uses_data_dir_as_primary_path(self):
+        post_response = (self.root / "hooks/post-response.sh").read_text(encoding="utf-8")
+        processor = (self.root / "hooks/post_response_processor.py").read_text(encoding="utf-8")
+        updater = (self.root / "update_claude_md.py").read_text(encoding="utf-8")
+        cron = (self.root / "cron-task.sh").read_text(encoding="utf-8")
+
+        self.assertIn('CONTEXT_FILE="$IMPRINT_DATA_DIR/recent_context.md"', post_response)
+        self.assertIn('CONTEXT_FILE = DATA_DIR / "recent_context.md"', processor)
+        self.assertIn('context_file = DATA_DIR / "recent_context.md"', updater)
+        self.assertIn('CONTEXT_FILE="$IMPRINT_DATA_DIR/recent_context.md"', cron)
+
+    def test_telegram_service_exports_imprint_data_dir(self):
+        service = (self.root / "deploy/imprint-telegram@.service").read_text(encoding="utf-8")
+        self.assertIn("Environment=IMPRINT_DATA_DIR=/home/%i/.imprint", service)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ Thin wrapper so the post-response hook doesn't need to know implementation detai
 Usage:
   python3 scripts/compress_context.py <context-file-path>
 
-If imprint_memory.compress is available, delegates to it.
+If imprint_memory.compress is available, delegates to compress_file().
 Otherwise falls back to simple tail truncation (keep last 60 lines).
 """
 
@@ -34,14 +34,15 @@ def main():
         print(f"File not found: {filepath}", file=sys.stderr)
         sys.exit(1)
 
-    # Try the full compression from imprint_memory package
     try:
-        from imprint_memory.compress import compress_context
-        compress_context(str(filepath))
-        print(f"Compressed via imprint_memory.compress")
-    except (ImportError, AttributeError):
-        # Package not available or doesn't have compress module yet
+        from imprint_memory.compress import compress_file
+    except ImportError:
+        # Package not available; keep hooks functional with local truncation.
         compress_simple(filepath)
+        return
+
+    compress_file(filepath)
+    print("Compressed via imprint_memory.compress")
 
 
 if __name__ == "__main__":

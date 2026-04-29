@@ -11,6 +11,7 @@ Restart=on-failure
 RestartSec=10
 
 Environment=PATH=/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=IMPRINT_DATA_DIR=/home/%i/.imprint
 
 [Install]
 WantedBy=multi-user.target

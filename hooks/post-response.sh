@@ -19,8 +19,9 @@ if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
     exit 0
 fi
 
-# Ensure imprint_memory uses the project's memory.db, not ~/.imprint/
-export IMPRINT_DATA_DIR="$SCRIPT_DIR"
+# Use configured data dir, defaulting to the shared imprint home.
+export IMPRINT_DATA_DIR="${IMPRINT_DATA_DIR:-$HOME/.imprint}"
+mkdir -p "$IMPRINT_DATA_DIR"
 
 # Run the Python processor
 python3 "$SCRIPT_DIR/hooks/post_response_processor.py" "$TRANSCRIPT" "$SESSION_ID" "$SCRIPT_DIR" 2>> "$LOG_DIR/post-response.log"
@@ -29,7 +30,7 @@ python3 "$SCRIPT_DIR/hooks/post_response_processor.py" "$TRANSCRIPT" "$SESSION_I
 python3 "$SCRIPT_DIR/update_claude_md.py" 2>> "$LOG_DIR/post-response.log" || true
 
 # Check if recent_context.md needs compression (>120 message lines)
-CONTEXT_FILE="$SCRIPT_DIR/recent_context.md"
+CONTEXT_FILE="$IMPRINT_DATA_DIR/recent_context.md"
 if [ -f "$CONTEXT_FILE" ]; then
     MSG_LINES=$(grep -c '^\[' "$CONTEXT_FILE" 2>/dev/null || echo 0)
     if [ "$MSG_LINES" -gt 120 ]; then
