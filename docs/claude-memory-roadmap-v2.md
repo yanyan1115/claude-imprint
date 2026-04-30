@@ -264,7 +264,7 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - [x] 统一 `IMPRINT_DATA_DIR` 路径策略：hooks / cron / services 使用同一数据目录策略，`recent_context.md` 主写 `$IMPRINT_DATA_DIR`。
 - [x] 对齐 MCP Summary 能力：新增 `update_summary` / `delete_summary` MCP tools，并把 Summary update/delete SQL 下沉到 `memory_manager`。
 
-### 5.1 P1：PRD 实体与关系模型差异梳理
+### 5.1 P1：PRD 实体与关系模型差异梳理（已完成）
 
 对照 `claude-memory-prd-v2.md`，梳理当前 schema 与 PRD 中尚未落地或只部分落地的实体/关系：
 - `relationship_snapshots` 当前是 `$IMPRINT_DATA_DIR/CLAUDE.md` 文件，不是数据库表。
@@ -273,28 +273,29 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - `conversation_log.summary` 已有字段，`recent_context.md` 当前仍以格式化 recent messages 为主，需要明确 summary 字段的呈现策略。
 
 交付物：
-- 一份 PRD-to-schema gap table。
-- 明确哪些差异保留为设计选择，哪些进入 Phase 5 / Phase 6 backlog。
+- [x] 一份 PRD-to-schema gap table：`docs/prd-schema-gap.md`。
+- [x] 明确哪些差异保留为设计选择，哪些进入 Phase 5 / Phase 6 backlog。
 
-### 5.2 P1：外部 connector 文档补齐
+### 5.2 P1：外部 connector 文档补齐（已完成）
 
 补齐 `imprint-telegram` 等外部 connector 的使用文档：
-- Telegram channel 的启动方式、systemd 模板、环境变量、日志路径。
-- Cloudflare Tunnel 与 Claude.ai Custom Connector 的 OAuth 配置流程。
-- 外部 channel 消息如何进入 `conversation_log`、`recent_context.md`、Dashboard Horizon。
-- 常见故障：token 缺失、plugin 未安装、channel 进程无权限、Windows / Linux 差异。
+- [x] Telegram channel 的启动方式、systemd 模板、环境变量、日志路径。
+- [x] BotFather token、`TELEGRAM_CHAT_ID`、Bot API 发送工具配置。
+- [x] 外部 channel 消息如何进入 `conversation_log`、`recent_context.md`、Dashboard Horizon。
+- [x] Telegram 端入库与检索验证流程。
+- [x] 常见故障：token 缺失、plugin 未安装、channel 进程无权限、Windows / Linux 差异。
 
 交付物：
-- `docs/connectors.md` 或拆分到 `deployment-runbook.md` / `dashboard-guide.md` 的 connector 章节。
+- [x] `packages/imprint_telegram/README.md`。
 
-### 5.3 P1：Runtime 体验与跨平台状态探测
+### 5.3 P1：Runtime 体验与跨平台状态探测（已完成）
 
 今天的 Windows Runtime 冒烟测试发现：服务实际监听正常，但 Dashboard 的 status 检测依赖 `lsof` / `pgrep`，在 Windows 上会显示 `memory_http.running=false`。
 
 后续修复：
-- Dashboard 状态检测增加跨平台分支：Windows 使用 `netstat` / `psutil.net_connections()`。
-- `start.sh` 之外补 Windows PowerShell 启动脚本或文档。
-- 对 Dashboard Summary PUT 的非法 JSON 请求返回 400，而不是 FastAPI 默认 500。
+- [x] Dashboard 状态检测增加跨平台分支：优先使用 `psutil.net_connections()` / `psutil.process_iter()`，并保留 `lsof` / `pgrep` / PID file fallback。
+- [x] Windows 自检脚本与 README 文档补充 PowerShell 路径。
+- [ ] 对 Dashboard Summary PUT 的非法 JSON 请求返回 400，而不是 FastAPI 默认 500。
 
 ### 5.4 P2：SQLite FTS5 重建策略
 
@@ -317,32 +318,33 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - Summary / memories / decay 操作增加更完整的错误态和 toast 反馈。
 - Live Files 对迁移 fallback 文件给出来源提示。
 - 增加 `/api/health` 或 `/api/runtime-check`，用于一键冒烟测试。
-- 将 Runtime 测试命令整理为 `scripts/smoke_test.ps1` / `scripts/smoke_test.sh`。
+- [x] 将 Runtime 测试命令整理为 `scripts/smoke_test.ps1` / `scripts/smoke_test.sh`。
 
-### 5.7 P1：完善 docker-compose.yml
+### 5.7 P1：完善 docker-compose.yml（已完成）
 
 确保 `docker compose up -d` 一条命令启动所有服务：
-- SQLite + FTS5（已包含在主服务里）
-- Ollama + bge-m3（向量检索，可选模块）
-- MCP Server（memory_mcp.py）
-- Dashboard（管理面板）
-- Cloudflare Tunnel（自动连接）
+- [x] SQLite + FTS5（已包含在主服务里）
+- [x] Ollama + bge-m3（向量检索，可选 profile）
+- [x] MCP Server（`imprint-memory --http`）
+- [x] Dashboard（管理面板）
+- [x] Cloudflare Tunnel（临时 tunnel 可选 profile；Telegram channel 因依赖宿主机 Claude Code 登录态暂不放入 compose）
 
-### 5.8 P1：整理 .env.example
+### 5.8 P1：整理 .env.example（已完成）
 
 把所有配置项整理清楚，加中文注释，包含 v0.2 新增的：
-- `DECAY_LAMBDA`、`DECAY_THRESHOLD`
-- `AROUSAL_SURFACING_THRESHOLD`
-- `LLM_BASE_URL`、`LLM_MODEL`
+- [x] `DECAY_LAMBDA`、`DECAY_THRESHOLD`
+- [x] `AROUSAL_SURFACING_THRESHOLD`
+- [x] `LLM_BASE_URL`、`LLM_MODEL`
+- [x] Telegram、Heartbeat、Cloudflare、端口、数据路径等开源部署变量。
 
-### 5.9 P1：写中文 README 和新手教程
+### 5.9 P1：写中文 README 和新手教程（已完成）
 
 参考 Imprint 的文档结构，补充：
-- 这是什么、能做什么（突出情感记忆 + 自然遗忘特性）
-- 需要什么前置条件
-- 15 分钟上手流程（截图 + 命令，对应 Phase 1 的步骤）
-- 常见问题排查
-- CLAUDE.md 的写法建议（关系快照那层怎么写）
+- [x] 这是什么、能做什么（突出长期记忆、多端共享、Dashboard、Telegram、自动化）
+- [x] 需要什么前置条件
+- [x] 15 分钟上手流程（Docker 快速启动 + 本地 Python 路径）
+- [x] 常见问题入口与自检脚本入口
+- [ ] CLAUDE.md 的写法建议（关系快照那层怎么写）
 
 ### 5.10 P1：清理代码，整理 CLAUDE.md 模板
 
