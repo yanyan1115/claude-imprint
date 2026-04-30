@@ -297,27 +297,27 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - [x] Windows 自检脚本与 README 文档补充 PowerShell 路径。
 - [ ] 对 Dashboard Summary PUT 的非法 JSON 请求返回 400，而不是 FastAPI 默认 500。
 
-### 5.4 P2：SQLite FTS5 重建策略
+### 5.4 P2：SQLite FTS5 重建策略（已完成）
 
 当前重点是确认 FTS5 / CJK segment / bank_chunks 的一致性和可恢复性：
-- 增加 `memory_reindex` 的可观测输出，明确重建了哪些表和索引。
-- 对 `memories_fts`、`conversation_fts`、`bank_chunks` 设计重建策略。
-- 增加损坏或 schema 漂移后的恢复 runbook。
-- 对 CJK 分词和普通英文 token 的混合搜索做回归样例。
+- [x] 增加 `memory_reindex` 的可观测输出，明确重建了哪些表和索引。
+- [x] 对 `memories_fts`、`conversation_log_fts`、`bank_chunks` 设计重建策略。
+- [x] 增加损坏或 schema 漂移后的恢复 runbook。
+- [x] 对 CJK 分词和普通英文 token 的混合搜索做回归样例。
 
-### 5.5 P2：向量检索优化
+### 5.5 P2：向量检索优化（已完成）
 
 优化 hybrid retrieval 的质量和性能：
-- 明确 embedding provider 切换后的 reindex 流程。
-- 加入最小向量相似度阈值实验，不让低相关向量结果污染 RRF。
-- 记录 RRF 权重、time-decay、arousal boost 的调参样例。
-- 增加 retrieval evaluation fixtures，用固定查询对比排序变化。
+- [x] 明确 embedding provider 切换后的 reindex 流程。
+- [x] 加入最小向量相似度阈值实验，不让低相关向量结果污染 RRF。
+- [x] 记录 RRF 权重、time-decay、arousal boost 的调参样例。
+- [x] 增加 retrieval evaluation fixtures，用固定查询对比排序变化。
 
-### 5.6 P2：Dashboard 与运维增强
+### 5.6 P2：Dashboard 与运维增强（已完成）
 
-- Summary / memories / decay 操作增加更完整的错误态和 toast 反馈。
-- Live Files 对迁移 fallback 文件给出来源提示。
-- 增加 `/api/health` 或 `/api/runtime-check`，用于一键冒烟测试。
+- [x] Summary / memories / decay 操作增加更完整的错误态和 toast 反馈。
+- [x] Live Files 对迁移 fallback 文件给出来源提示。
+- [x] 增加 `/api/health` 或 `/api/runtime-check`，用于一键冒烟测试。
 - [x] 将 Runtime 测试命令整理为 `scripts/smoke_test.ps1` / `scripts/smoke_test.sh`。
 
 ### 5.7 P1：完善 docker-compose.yml（已完成）
