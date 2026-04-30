@@ -1,4 +1,5 @@
 import json
+import asyncio
 import importlib.util
 import sqlite3
 import tempfile
@@ -186,6 +187,32 @@ class ReindexDocumentationTests(unittest.TestCase):
 
         self.assertIn("SQLite FTS5 或 bank_chunks 索引异常", runbook)
         self.assertIn("SQLite FTS5 检索", lifecycle)
+
+
+class DashboardSummaryApiTests(unittest.TestCase):
+    def test_summary_put_invalid_json_returns_400(self):
+        from packages.imprint_dashboard import dashboard
+
+        class BadJsonRequest:
+            async def json(self):
+                raise json.JSONDecodeError("bad json", "{", 0)
+
+        response = asyncio.run(dashboard.api_update_summary(1, BadJsonRequest()))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invalid JSON body", response.body.decode("utf-8"))
+
+    def test_summary_put_non_object_json_returns_400(self):
+        from packages.imprint_dashboard import dashboard
+
+        class ListJsonRequest:
+            async def json(self):
+                return []
+
+        response = asyncio.run(dashboard.api_update_summary(1, ListJsonRequest()))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("JSON body must be an object", response.body.decode("utf-8"))
 
 
 if __name__ == "__main__":

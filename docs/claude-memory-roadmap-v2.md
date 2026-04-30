@@ -295,7 +295,7 @@ surfaced = get_surfaced_memories(threshold=0.7)
 后续修复：
 - [x] Dashboard 状态检测增加跨平台分支：优先使用 `psutil.net_connections()` / `psutil.process_iter()`，并保留 `lsof` / `pgrep` / PID file fallback。
 - [x] Windows 自检脚本与 README 文档补充 PowerShell 路径。
-- [ ] 对 Dashboard Summary PUT 的非法 JSON 请求返回 400，而不是 FastAPI 默认 500。
+- [x] 对 Dashboard Summary PUT 的非法 JSON 请求返回 400，而不是 FastAPI 默认 500。
 
 ### 5.4 P2：SQLite FTS5 重建策略（已完成）
 
@@ -344,11 +344,13 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - [x] 需要什么前置条件
 - [x] 15 分钟上手流程（Docker 快速启动 + 本地 Python 路径）
 - [x] 常见问题入口与自检脚本入口
-- [ ] CLAUDE.md 的写法建议（关系快照那层怎么写）
+- [x] CLAUDE.md 的写法建议（关系快照那层怎么写）
 
-### 5.10 P1：清理代码，整理 CLAUDE.md 模板
+### 5.10 P1：清理代码，整理 CLAUDE.md 模板（已完成）
 
-提供一个 CLAUDE.md 的模板，让用户知道关系快照该写什么。
+- [x] 提供一个 CLAUDE.md 的模板，让用户知道关系快照该写什么。
+- [x] 模板覆盖关系快照（Roleplay / Persona）、长期偏好、沟通风格和重要边界。
+- [x] 交付物：`docs/claude-md-template.md`。
 
 ### 5.11 P1：发布
 

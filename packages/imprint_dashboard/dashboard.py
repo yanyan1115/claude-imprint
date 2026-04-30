@@ -644,7 +644,12 @@ async def api_delete_summary(summary_id: int):
 @app.put("/api/summaries/{summary_id}")
 async def api_update_summary(summary_id: int, request: Request):
     """Update a rolling conversation summary."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse({"ok": False, "error": "invalid JSON body"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "JSON body must be an object"}, status_code=400)
     content = (body.get("content") or "").strip()
     platform = (body.get("platform") or "unknown").strip() or "unknown"
     try:
