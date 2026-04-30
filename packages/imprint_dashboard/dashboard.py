@@ -57,41 +57,109 @@ COMPONENTS = {
 
 # ─── Status Detection ────────────────────────────────────
 
+def _pid_is_running(pid):
+    """Return True when a PID exists and is not a zombie."""
+    try:
+        if not psutil.pid_exists(pid):
+            return False
+        proc = psutil.Process(pid)
+        return proc.status() != psutil.STATUS_ZOMBIE
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return False
+
+
+def _find_listening_port(port):
+    """Find a listening process by port using psutil, cross-platform."""
+    try:
+        for conn in psutil.net_connections(kind='inet'):
+            if not conn.laddr or conn.laddr.port != port:
+                continue
+            if conn.status == psutil.CONN_LISTEN:
+                return {"running": True, "pid": conn.pid}
+    except (psutil.AccessDenied, OSError):
+        pass
+    return {"running": False, "pid": None}
+
+
+def _find_process_by_cmdline(pattern):
+    """Find a process whose command line contains the given pattern."""
+    try:
+        for proc in psutil.process_iter(['pid', 'cmdline']):
+            try:
+                cmd = " ".join(proc.info.get('cmdline') or [])
+                if pattern in cmd:
+                    return {"running": True, "pid": proc.info.get('pid')}
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+    except Exception:
+        pass
+    return {"running": False, "pid": None}
+
+
+def _find_port_with_lsof(port):
+    """Unix fallback: find listening PIDs with lsof."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-ti", f":{port}"],
+            capture_output=True, text=True, timeout=3
+        )
+        pids = [p for p in result.stdout.strip().split("\n") if p]
+        if pids:
+            return {"running": True, "pid": int(pids[0])}
+    except Exception:
+        pass
+    return {"running": False, "pid": None}
+
+
+def _find_process_with_pgrep(pattern):
+    """Unix fallback: find process by command line with pgrep."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", pattern],
+            capture_output=True, text=True, timeout=3
+        )
+        pids = [p for p in result.stdout.strip().split("\n") if p]
+        if pids:
+            return {"running": True, "pid": int(pids[0])}
+    except Exception:
+        pass
+    return {"running": False, "pid": None}
+
+
 def get_pid_status(comp):
-    """Check background process status: port → grep → PID file"""
-    # Method 1: port detection (lsof, no root needed)
+    """Check background process status: psutil port → lsof → psutil cmdline → pgrep → PID file"""
+    # Method 1: cross-platform port detection
     if "check_port" in comp:
-        try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{comp['check_port']}"],
-                capture_output=True, text=True, timeout=3
-            )
-            pids = [p for p in result.stdout.strip().split("\n") if p]
-            if pids:
-                return {"running": True, "pid": int(pids[0])}
-        except Exception:
-            pass
-    # Method 2: process name grep
+        status = _find_listening_port(comp["check_port"])
+        if status["running"]:
+            return status
+
+    # Method 2: Unix port fallback
+    if "check_port" in comp:
+        status = _find_port_with_lsof(comp["check_port"])
+        if status["running"]:
+            return status
+
+    # Method 3: cross-platform process command line matching
     if "grep_pattern" in comp:
-        try:
-            result = subprocess.run(
-                ["pgrep", "-f", comp["grep_pattern"]],
-                capture_output=True, text=True, timeout=3
-            )
-            pids = [p for p in result.stdout.strip().split("\n") if p]
-            if pids:
-                return {"running": True, "pid": int(pids[0])}
-        except Exception:
-            pass
-    # Method 3: PID file fallback
-    pid_path = BASE / comp.get("pid_file", "")
+        status = _find_process_by_cmdline(comp["grep_pattern"])
+        if status["running"]:
+            return status
+
+    # Method 4: Unix process name fallback
+    if "grep_pattern" in comp:
+        status = _find_process_with_pgrep(comp["grep_pattern"])
+        if status["running"]:
+            return status
+
+    # Method 5: PID file fallback
+    pid_file = comp.get("pid_file")
+    pid_path = BASE / pid_file if pid_file else None
     if pid_path and pid_path.exists():
         try:
             pid = int(pid_path.read_text().strip())
-            if psutil.pid_exists(pid):
-                p = psutil.Process(pid)
-                if p.status() != psutil.STATUS_ZOMBIE:
-                    return {"running": True, "pid": pid}
+            if _pid_is_running(pid):
+                return {"running": True, "pid": pid}
         except (ValueError, psutil.NoSuchProcess, psutil.AccessDenied):
             pass
         pid_path.unlink(missing_ok=True)
@@ -100,16 +168,10 @@ def get_pid_status(comp):
 
 def get_terminal_status(comp):
     """Check terminal window process status"""
-    try:
-        result = subprocess.run(
-            ["pgrep", "-f", comp["grep_pattern"]],
-            capture_output=True, text=True, timeout=3
-        )
-        pids = result.stdout.strip().split("\n")
-        pids = [p for p in pids if p]
-        return {"running": len(pids) > 0, "pid": int(pids[0]) if pids else None}
-    except Exception:
-        return {"running": False, "pid": None}
+    status = _find_process_by_cmdline(comp["grep_pattern"])
+    if status["running"]:
+        return status
+    return _find_process_with_pgrep(comp["grep_pattern"])
 
 
 def get_tunnel_url():

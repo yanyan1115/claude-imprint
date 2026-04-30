@@ -1,202 +1,273 @@
 # Claude Imprint
 
-A self-hosted system that gives Claude persistent memory, multi-channel messaging, and automation. Talk to it from Claude Code, Claude.ai, or Telegram — it remembers everything and shares context across channels. Other channels (Discord, Slack, etc.) can be added via their own MCP servers.
+Claude Imprint 是一个自托管的 Claude 长期记忆系统：它把 Claude Code、Claude.ai、Telegram 等入口接到同一份记忆库里，让对话、摘要、任务状态和跨渠道上下文可以持续保存、检索和复用。
 
-Built for **Claude Code Pro/Max subscribers**. Uses only official Claude Code features — no API costs, no third-party auth.
+本仓库基于 `imprint-memory`，在持久记忆之上补充 Dashboard、多渠道消息、自动化任务、Telegram 通知、Cloudflare Tunnel 接入和部署模板。
 
-> **Just want persistent memory?** The memory system is a standalone package: [imprint-memory](https://github.com/Qizhan7/imprint-memory). Install it alone with `pip install` — no need for the full Imprint stack. This repo adds multi-channel messaging, automation, dashboard, and everything else on top.
+## 你能用它做什么
 
-## Features
+- 在 Claude Code 和 Claude.ai 之间共享同一份记忆。
+- 通过 Dashboard 查看记忆、摘要、短期上下文、运行状态和交互热力图。
+- 把 Telegram 对话写入统一记忆库，并从 Claude.ai / Claude Code 检索出来。
+- 用 cron / heartbeat 做定时提醒、健康检查、晨间简报和自动整理。
+- 用 SQLite + FTS5 + 可选向量检索保存长期知识、关系快照和对话日志。
 
-### 🧠 Memory
-- **Hybrid search** — FTS5 full-text + bge-m3 vector embeddings + exact-match keyword, fused with RRF ranking and time-decay scoring. Replaces Claude Code's built-in file-based memory.
-- **CJK support** — Chinese/Japanese/Korean text segmented with jieba for accurate full-text search.
-- **Unified across interfaces** — The same SQLite backend serves Claude Code (stdio MCP) and Claude.ai (HTTP MCP via Cloudflare Tunnel). Memories saved in one are instantly searchable from the other.
-- **Categorized storage** — Memories tagged by type (facts, events, tasks, experience) and source. Search by category or let hybrid search find the best match.
-- **Knowledge bank** — Long-form structured knowledge in Markdown files (`memory/bank/`). Preferences, relationships, technical experience — all indexed and included in semantic search.
-- **Daily logs** — Automatic daily journals. Pre-compaction hooks capture context before it's compressed. Nothing gets lost.
+## 快速开始：Docker
 
-### 💬 Multi-Channel
-- **Telegram** (primary) — Full-featured: chat, file sharing, heartbeat notifications, morning briefings, direct messaging from Claude.ai. Uses Anthropic's official Claude Code Telegram plugin.
-- **Claude.ai** — Connect via Cloudflare Tunnel. Full memory access + remote code execution on your machine.
-- **Cross-channel context** — Messages flow in from all sources. Claude keeps a shared timeline of what happened where. When you switch devices, it already knows the context.
-- **Pluggable channels** — The system auto-detects any Claude Code channel plugin (Discord, Slack, etc.). Just install the MCP server and messages are automatically logged, tagged, and searchable.
+适合第一次体验，目标是在 15 分钟内启动 Memory HTTP 和 Dashboard。
 
-### 🎮 Remote Control (requires [Chat Integration](#chat-integration-claudeai--local-memory) + additional MCP packages)
-- **Chat-to-code** — Tell Claude.ai to write code, run scripts, fix bugs on your computer. Works out of the box with Chat Integration.
-- **Direct Telegram messaging** — Claude.ai sends to your Telegram via Bot API. Requires `imprint_telegram` MCP (see [Telegram setup](#telegram)).
-- **System monitor** — Check CPU, RAM, disk, running services. Requires `imprint_utils` MCP.
-- **Webpage reader** — Fetch and read any URL. Requires `imprint_utils` MCP.
-- **Spotify control** — Play, pause, skip, volume. Requires `imprint_utils` MCP. macOS only (AppleScript).
-
-### ⚡ Automation
-- **Scheduled tasks** — Morning briefing, reminders, nightly memory consolidation. Customizable cron prompt templates.
-- **Heartbeat agent** — Periodic automated checks with proactive Telegram notifications.
-- **Hooks** — Pre-compaction context saver + post-response conversation logger with auto-compression.
-
-### 📊 Dashboard
-- **Control panel** — Single-file FastAPI app (localhost:3000). Start/stop services, browse memories, view scheduled tasks, conversation stream stats, and a GitHub-style interaction heatmap.
-
-![Dashboard](docs/dashboard.png)
-
-## Platform support
-
-| Feature | macOS | Linux / Cloud |
-|---------|-------|---------------|
-| Memory system, dashboard, hooks, cron | ✅ | ✅ |
-| Telegram, Claude.ai integration | ✅ | ✅ |
-| `start.sh` / `stop.sh` | ✅ Terminal windows | ✅ Background processes |
-| Spotify control | ✅ | ❌ AppleScript only |
-
-### Cloud server deployment
-
-Core features (memory, HTTP server, dashboard, Telegram, heartbeat, cron) work on Linux cloud servers. Claude Code runs as a CLI tool — a basic VPS (1 CPU, 1GB RAM) is sufficient; the AI inference happens on Anthropic's servers, not yours.
+### 1. 克隆项目
 
 ```bash
-# Quick start on a cloud server
-git clone https://github.com/Qizhan7/claude-imprint.git && cd claude-imprint
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-
-# Authenticate Claude Code (Max Plan OAuth token)
-mkdir -p ~/.claude && echo "your-token" > ~/.claude/cron-token
-
-./start.sh   # starts all services as background processes
-./stop.sh    # stops everything
+git clone https://github.com/Qizhan7/claude-imprint.git
+cd claude-imprint
 ```
 
-For production deployments, systemd service templates are provided in [`deploy/`](deploy/). See [`deploy/README.md`](deploy/README.md) for full instructions.
+### 2. 准备环境变量
 
-## Prerequisites
+```bash
+cp .env.example .env
+```
 
-- **Python 3.10+** (required by imprint-memory for type hint syntax)
-- **Claude Code** (Pro or Max subscription)
-- **macOS or Linux**
+打开 `.env`，至少确认这些值：
 
-## Quick start
+```env
+IMPRINT_DATA_DIR=~/.imprint
+TZ_OFFSET=0
+MEMORY_HTTP_PORT=8000
+DASHBOARD_PORT=3000
+```
+
+Telegram、LLM、Cloudflare 等变量可以先留空，等对应模块启用时再填。
+
+### 3. 启动核心服务
+
+```bash
+docker compose up -d memory-http dashboard
+```
+
+打开 Dashboard：
+
+```text
+http://localhost:3000
+```
+
+Memory HTTP 默认监听：
+
+```text
+http://localhost:8000/mcp
+```
+
+查看状态：
+
+```bash
+docker compose ps
+docker compose logs -f dashboard
+```
+
+一键自检：
+
+```bash
+bash scripts/smoke_test.sh
+```
+
+Windows PowerShell：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke_test.ps1
+```
+
+### 4. 可选：启动本地向量模型
+
+如果你想启用本地向量检索：
+
+```bash
+docker compose --profile vector up -d ollama
+docker exec -it claude-imprint-ollama ollama pull bge-m3
+```
+
+然后把 `.env` 中的 `OLLAMA_URL` 设置为：
+
+```env
+OLLAMA_URL=http://ollama:11434
+```
+
+重启服务：
+
+```bash
+docker compose restart memory-http dashboard
+```
+
+### 5. 可选：临时暴露给 Claude.ai
+
+启动 Cloudflare quick tunnel：
+
+```bash
+docker compose --profile tunnel up cloudflared
+```
+
+从日志中复制 `trycloudflare.com` URL，然后到 Claude.ai 的 Custom Connector 中添加 Memory HTTP MCP 地址。
+
+更完整的 Claude.ai 接入流程见 [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md) 和 [docs/deployment-runbook.md](docs/deployment-runbook.md)。
+
+## 快速开始：本地 Python
+
+如果你想在宿主机上运行，或需要接入 Claude Code / Telegram channel：
 
 ```bash
 git clone https://github.com/Qizhan7/claude-imprint.git
 cd claude-imprint
 
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# Register memory MCP server
-claude mcp add -s user imprint-memory -- imprint-memory
-
-# Start dashboard
-python3 packages/imprint_dashboard/dashboard.py
-# → http://localhost:3000
+cp .env.example .env
+export IMPRINT_DATA_DIR="$HOME/.imprint"
 ```
 
-You now have persistent memory in Claude Code. Add modules below for more.
+Windows PowerShell：
 
-## Modules
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 
-### Chat integration (Claude.ai → local memory)
+Copy-Item .env.example .env
+$env:IMPRINT_DATA_DIR="$HOME\.imprint"
+```
 
-Connect Claude.ai to your local memory via Cloudflare Tunnel + HTTP MCP.
+启动 Memory HTTP：
 
 ```bash
-# 1. Start HTTP server
-imprint-memory --http   # → localhost:8000
-
-# 2. Expose via tunnel
-cloudflared tunnel --url http://localhost:8000
-
-# 3. Generate OAuth credentials
-python3 scripts/generate_oauth.py
-
-# 4. Claude.ai → Settings → Connectors → Add Custom Connector
-#    Enter tunnel URL + OAuth credentials
+imprint-memory --http
 ```
 
-### Telegram
+另开一个终端启动 Dashboard：
+
+```bash
+python packages/imprint_dashboard/dashboard.py
+```
+
+打开：
+
+```text
+http://localhost:3000
+```
+
+## 接入 Claude Code
+
+注册记忆 MCP：
+
+```bash
+claude mcp add -s user imprint-memory -- imprint-memory
+```
+
+安装 hooks，让对话自动进入记忆链路：
+
+```bash
+claude settings add-hook PreCompact "bash $(pwd)/hooks/pre-compact-flush.sh"
+claude settings add-hook Stop "bash $(pwd)/hooks/post-response.sh"
+```
+
+更多 hooks 与自动化说明见 [docs/hooks-and-automation.md](docs/hooks-and-automation.md)。
+
+## 接入 Claude.ai
+
+最小流程：
+
+1. 启动 `imprint-memory --http`。
+2. 用 Cloudflare Tunnel 暴露 `localhost:8000`。
+3. 在 Claude.ai Settings -> Connectors 添加 Custom Connector。
+4. 在 Claude.ai 中调用 memory search / remember 工具验证。
+
+详细教程见 [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md)。
+
+## 接入 Telegram
+
+Telegram 有两条链路：
+
+- 官方 Claude Code Telegram channel plugin：负责在 Telegram 里和 Claude 双向聊天。
+- `packages/imprint_telegram/server.py`：负责让 Claude / cron / heartbeat 主动发送 Telegram 消息。
+
+快速启动 channel：
 
 ```bash
 claude /telegram:configure
 claude --permission-mode auto --channels plugin:telegram@claude-plugins-official
 ```
 
-### Automation
+完整配置、BotFather token、`TELEGRAM_CHAT_ID`、入库验证和检索验证见 [packages/imprint_telegram/README.md](packages/imprint_telegram/README.md)。
 
-```bash
-# Heartbeat agent (periodic checks + Telegram notifications)
-python3 packages/imprint_heartbeat/agent.py
+## 关键配置
 
-# Cron tasks — use prompt templates in cron-prompts/
-bash cron-task.sh morning-briefing cron-prompts/morning-briefing.md
+完整模板见 [.env.example](.env.example)。
+
+| 变量 | 说明 |
+| --- | --- |
+| `IMPRINT_DATA_DIR` | 统一数据目录，所有服务必须一致。 |
+| `IMPRINT_DB` | 可选 SQLite 路径，默认 `$IMPRINT_DATA_DIR/memory.db`。 |
+| `TZ_OFFSET` | 时区偏移小时数。 |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM 配置。 |
+| `OLLAMA_URL` | 本地 Ollama 地址。 |
+| `DECAY_LAMBDA` / `DECAY_THRESHOLD` | 情感衰减参数。 |
+| `AROUSAL_SURFACING_THRESHOLD` | 主动浮现阈值。 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram Bot API 发送配置。 |
+
+## 文档入口
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md) | 从零接入 Claude.ai Custom Connector。 |
+| [packages/imprint_telegram/README.md](packages/imprint_telegram/README.md) | Telegram BotFather、channel、发送工具、入库与检索验证。 |
+| [docs/dashboard-guide.md](docs/dashboard-guide.md) | Dashboard API 与页面说明。 |
+| [docs/configuration.md](docs/configuration.md) | 配置项、路径策略、环境变量。 |
+| [docs/prd-schema-gap.md](docs/prd-schema-gap.md) | PRD 实体/关系模型与当前 schema 的差异清单。 |
+| [docs/deployment-runbook.md](docs/deployment-runbook.md) | Linux / systemd / Cloudflare / 排障。 |
+| [docs/database-schema.md](docs/database-schema.md) | SQLite schema 与表结构。 |
+| [docs/memory-lifecycle.md](docs/memory-lifecycle.md) | 记忆写入、摘要、衰减、检索生命周期。 |
+| [docs/hooks-and-automation.md](docs/hooks-and-automation.md) | hooks、cron、heartbeat 自动化。 |
+
+## 目录速览
+
+```text
+packages/imprint_dashboard/   Dashboard
+packages/imprint_telegram/    Telegram Bot API MCP
+packages/imprint_utils/       system_status / webpage / Spotify tools
+hooks/                        Claude Code hooks
+cron-prompts/                 定时任务 prompt 模板
+deploy/                       systemd 服务模板
+docs/                         架构、API、部署、教程文档
+examples/                     CLAUDE.md 等示例
 ```
 
-Cron templates: `morning-briefing.md`, `drink-water.md`, `health-check.md`, `nightly-consolidation.md`, `weekly-memory-audit.md`. Edit to fit your style and schedule with crontab.
+## 生产部署
 
-> **Note:** Templates that use `send_telegram` or `system_status` need the full MCP config. The runner auto-detects `cron-mcp-full.json` (includes telegram + utils) if present, otherwise falls back to `cron-mcp.json` (memory only).
-
-### Hooks
+Linux 服务器推荐使用 systemd 模板：
 
 ```bash
-# Save context before compaction
-claude settings add-hook PreCompact "bash $(pwd)/hooks/pre-compact-flush.sh"
-
-# Log conversations after each response
-claude settings add-hook Stop "bash $(pwd)/hooks/post-response.sh"
+sudo cp deploy/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now imprint-memory@$USER
+sudo systemctl enable --now imprint-dashboard@$USER
+sudo systemctl enable --now imprint-telegram@$USER
 ```
 
-### Adding other channels (Discord, Slack, etc.)
+部署细节见 [deploy/README.md](deploy/README.md) 和 [docs/deployment-runbook.md](docs/deployment-runbook.md)。
 
-The system auto-detects any Claude Code channel plugin. No code changes needed — just install the channel MCP and everything works:
+## 安全提醒
 
-1. **Install the channel's MCP server** (e.g. a Discord MCP from the community)
-2. **Register it in `.mcp.json`** alongside imprint-memory
-3. **Start Claude Code** with both the channel and imprint-memory loaded
+- 不要提交真实 `.env`。
+- 不要公开 `TELEGRAM_BOT_TOKEN`、Cloudflare token、OAuth credentials。
+- `IMPRINT_DATA_DIR` 中可能包含私人记忆、对话、关系快照和日志。
+- 开源前请检查 `data/`、`memories/`、`logs/`、`.claude/` 是否包含个人数据。
 
-What happens automatically:
-- **Memory** — `memory_remember`, `memory_search`, etc. work immediately
-- **Conversation logging** — The post-response hook detects the new channel by name and tags all messages with the correct platform (e.g. `discord`)
-- **Cross-channel context** — Messages appear in `recent_context.md` and the CLAUDE.md AUTO section, visible to all other channels
-- **Search** — Use `conversation_search(query)` for all platforms, or `search_channel(query, "discord")` for a specific one
-- **Dashboard** — Stream stats show the new platform automatically; unknown platforms get a neutral color tag
-- **RRF hybrid search** — Works across all platforms, no configuration needed
+## 致谢
 
-### Semantic search (optional)
-
-```bash
-ollama pull bge-m3 && ollama serve
-```
-
-Without this, keyword search still works — you just don't get vector similarity.
-
-## Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `IMPRINT_DATA_DIR` | `~/.imprint` | Directory for memory.db and files |
-| `TZ_OFFSET` | `0` | UTC offset (e.g. `12`, `-5`) |
-| `HEARTBEAT_INTERVAL` | `900` | Heartbeat interval (seconds) |
-| `TELEGRAM_BOT_TOKEN` | — | From @BotFather |
-| `TELEGRAM_CHAT_ID` | — | From @userinfobot |
-| `QUIET_START` / `QUIET_END` | `23` / `7` | No proactive messages during these hours |
-
-See [imprint-memory](https://github.com/Qizhan7/imprint-memory) for memory-specific config (embedding provider, model, etc).
-
-## Customizing your Claude
-
-The system is shaped by a few Markdown files. See **[docs/customization.md](docs/customization.md)** for the full guide.
-
-The short version:
-
-| File | What it does | Who writes it |
-|------|-------------|---------------|
-| `~/.claude/CLAUDE.md` | Personality, preferences, rules — the brain | You |
-| `HEARTBEAT.md` | Heartbeat behavior + checklist | You |
-| `memory/bank/*.md` | Structured knowledge (preferences, experience, relationships) | You + Claude |
-| `MEMORY.md` | Auto-generated memory index | System |
-| `memory/YYYY-MM-DD.md` | Daily logs | System |
-
-## Acknowledgements
-
-[imprint-memory](https://github.com/Qizhan7/imprint-memory) · [Anthropic](https://anthropic.com) · [Ollama](https://ollama.com) + [bge-m3](https://huggingface.co/BAAI/bge-m3)
+- [imprint-memory](https://github.com/Qizhan7/imprint-memory)
+- [Anthropic Claude Code](https://docs.anthropic.com/)
+- [Ollama](https://ollama.com)
+- [bge-m3](https://huggingface.co/BAAI/bge-m3)
 
 ## License
 

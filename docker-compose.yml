@@ -1,0 +1,90 @@
+name: claude-imprint
+
+x-imprint-base: &imprint-base
+  image: python:3.11-slim
+  working_dir: /app
+  environment:
+    IMPRINT_DATA_DIR: /data/imprint
+    IMPRINT_DB: /data/imprint/memory.db
+    TZ_OFFSET: ${TZ_OFFSET:-0}
+    LLM_BASE_URL: ${LLM_BASE_URL:-}
+    LLM_API_KEY: ${LLM_API_KEY:-}
+    LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+    OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+    COMPRESS_MODEL: ${COMPRESS_MODEL:-goekdenizguelmez/JOSIEFIED-Qwen3:8b}
+    DECAY_LAMBDA: ${DECAY_LAMBDA:-0.05}
+    DECAY_THRESHOLD: ${DECAY_THRESHOLD:-0.30}
+    AROUSAL_SURFACING_THRESHOLD: ${AROUSAL_SURFACING_THRESHOLD:-0.70}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  volumes:
+    - .:/app
+    - imprint-data:/data/imprint
+  restart: unless-stopped
+
+services:
+  memory-http:
+    <<: *imprint-base
+    container_name: claude-imprint-memory-http
+    command: >
+      sh -lc "apt-get update
+      && apt-get install -y --no-install-recommends git
+      && rm -rf /var/lib/apt/lists/*
+      && python -m pip install --no-cache-dir -r requirements.txt
+      && imprint-memory --http"
+    ports:
+      - "${MEMORY_HTTP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport socket\nsocket.create_connection(('127.0.0.1', 8000), timeout=5).close()\nPY"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  dashboard:
+    <<: *imprint-base
+    container_name: claude-imprint-dashboard
+    command: >
+      sh -lc "apt-get update
+      && apt-get install -y --no-install-recommends git
+      && rm -rf /var/lib/apt/lists/*
+      && python -m pip install --no-cache-dir -r requirements.txt
+      && python -m uvicorn packages.imprint_dashboard.dashboard:app --host 0.0.0.0 --port 3000 --log-level warning"
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    depends_on:
+      memory-http:
+        condition: service_started
+
+  # Optional: local vector embedding runtime.
+  # Start it with:
+  #   docker compose --profile vector up -d ollama
+  # Then pull the model:
+  #   docker exec -it claude-imprint-ollama ollama pull bge-m3
+  ollama:
+    image: ollama/ollama:latest
+    container_name: claude-imprint-ollama
+    profiles: ["vector"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+  # Optional: temporary Cloudflare quick tunnel to Memory HTTP.
+  # Start it with:
+  #   docker compose --profile tunnel up cloudflared
+  # Then copy the trycloudflare URL from the logs into Claude.ai Connector setup.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: claude-imprint-cloudflared
+    profiles: ["tunnel"]
+    command: tunnel --url http://memory-http:8000
+    depends_on:
+      memory-http:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  imprint-data:
+  ollama-data:
