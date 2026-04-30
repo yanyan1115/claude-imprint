@@ -1,5 +1,290 @@
 # Claude Imprint
 
+**English | [中文](#中文)**
+
+Claude Imprint is a self-hosted long-term memory system for Claude. It connects Claude Code, Claude.ai, Telegram, and other entry points to the same memory store, so conversations, summaries, task state, and cross-channel context can be saved, searched, and reused over time.
+
+This repository is built on **MemoClover** (Python package name `memo-clover` / `memo_clover`). On top of the standalone Claude long-term memory core, it adds a Dashboard, multi-channel messaging, automation tasks, Telegram notifications, Cloudflare Tunnel access, and deployment templates.
+
+## What You Can Do With It
+
+- Share one memory store between Claude Code and Claude.ai.
+- View memories, summaries, short-term context, runtime status, and interaction heatmaps in the Dashboard.
+- Write Telegram conversations into the unified memory store, then retrieve them from Claude.ai / Claude Code.
+- Use cron / heartbeat jobs for scheduled reminders, health checks, morning briefings, and automatic cleanup.
+- Store long-term knowledge, relationship snapshots, and conversation logs with SQLite + FTS5 + optional vector retrieval.
+
+## Quick Start: Docker
+
+This path is best for a first trial. The goal is to start Memory HTTP and the Dashboard within 15 minutes.
+
+### 1. Clone The Project
+
+```bash
+git clone https://github.com/Qizhan7/claude-imprint.git
+cd claude-imprint
+```
+
+### 2. Prepare Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and at least confirm these values:
+
+```env
+IMPRINT_DATA_DIR=~/.imprint
+TZ_OFFSET=0
+MEMORY_HTTP_PORT=8000
+DASHBOARD_PORT=3000
+```
+
+Telegram, LLM, Cloudflare, and other variables can stay empty at first. Fill them in when you enable the corresponding modules.
+
+### 3. Start Core Services
+
+```bash
+docker compose up -d memory-http dashboard
+```
+
+Open the Dashboard:
+
+```text
+http://localhost:3000
+```
+
+Memory HTTP listens by default at:
+
+```text
+http://localhost:8000/mcp
+```
+
+Check status:
+
+```bash
+docker compose ps
+docker compose logs -f dashboard
+```
+
+Run the one-command smoke test:
+
+```bash
+bash scripts/smoke_test.sh
+```
+
+Windows PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/smoke_test.ps1
+```
+
+### 4. Optional: Start A Local Vector Model
+
+If you want local vector retrieval:
+
+```bash
+docker compose --profile vector up -d ollama
+docker exec -it claude-imprint-ollama ollama pull bge-m3
+```
+
+Then set `OLLAMA_URL` in `.env`:
+
+```env
+OLLAMA_URL=http://ollama:11434
+```
+
+Restart the services:
+
+```bash
+docker compose restart memory-http dashboard
+```
+
+### 5. Optional: Expose Temporarily To Claude.ai
+
+Start a Cloudflare quick tunnel:
+
+```bash
+docker compose --profile tunnel up cloudflared
+```
+
+Copy the `trycloudflare.com` URL from the logs, then add the Memory HTTP MCP address as a Custom Connector in Claude.ai.
+
+For the complete Claude.ai integration flow, see [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md) and [docs/deployment-runbook.md](docs/deployment-runbook.md).
+
+## Quick Start: Local Python
+
+Use this path if you want to run on the host machine, or if you need Claude Code / Telegram channel integration:
+
+```bash
+git clone https://github.com/Qizhan7/claude-imprint.git
+cd claude-imprint
+
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env
+export IMPRINT_DATA_DIR="$HOME/.imprint"
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+Copy-Item .env.example .env
+$env:IMPRINT_DATA_DIR="$HOME\.imprint"
+```
+
+Start Memory HTTP:
+
+```bash
+memo-clover --http
+```
+
+Open another terminal and start the Dashboard:
+
+```bash
+python packages/imprint_dashboard/dashboard.py
+```
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+## Connect Claude Code
+
+Register the memory MCP:
+
+```bash
+claude mcp add -s user memo-clover -- memo-clover
+```
+
+Install hooks so conversations automatically enter the memory pipeline:
+
+```bash
+claude settings add-hook PreCompact "bash $(pwd)/hooks/pre-compact-flush.sh"
+claude settings add-hook Stop "bash $(pwd)/hooks/post-response.sh"
+```
+
+For more about hooks and automation, see [docs/hooks-and-automation.md](docs/hooks-and-automation.md).
+
+## Connect Claude.ai
+
+Minimal flow:
+
+1. Start `memo-clover --http`.
+2. Expose `localhost:8000` with Cloudflare Tunnel.
+3. Add a Custom Connector in Claude.ai Settings -> Connectors.
+4. Verify by calling the memory search / remember tools in Claude.ai.
+
+For the detailed tutorial, see [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md).
+
+## Connect Telegram
+
+Telegram has two paths:
+
+- Official Claude Code Telegram channel plugin: handles two-way chat with Claude in Telegram.
+- `packages/imprint_telegram/server.py`: lets Claude / cron / heartbeat proactively send Telegram messages.
+
+Start the channel quickly:
+
+```bash
+claude /telegram:configure
+claude --permission-mode auto --channels plugin:telegram@claude-plugins-official
+```
+
+For full configuration, BotFather token setup, `TELEGRAM_CHAT_ID`, write verification, and retrieval verification, see [packages/imprint_telegram/README.md](packages/imprint_telegram/README.md).
+
+## Key Configuration
+
+See the complete template in [.env.example](.env.example).
+
+| Variable | Description |
+| --- | --- |
+| `IMPRINT_DATA_DIR` | Unified data directory. All services must use the same value. |
+| `IMPRINT_DB` | Optional SQLite path. Defaults to `$IMPRINT_DATA_DIR/memory.db`. |
+| `TZ_OFFSET` | Timezone offset in hours. |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM configuration. |
+| `OLLAMA_URL` | Local Ollama endpoint. |
+| `DECAY_LAMBDA` / `DECAY_THRESHOLD` | Emotional decay parameters. |
+| `AROUSAL_SURFACING_THRESHOLD` | Proactive resurfacing threshold. |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram Bot API sending configuration. |
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [docs/tutorial-01-memory.md](docs/tutorial-01-memory.md) | Connect Claude.ai Custom Connector from scratch. |
+| [packages/imprint_telegram/README.md](packages/imprint_telegram/README.md) | Telegram BotFather, channel, sending tools, write verification, and retrieval verification. |
+| [docs/dashboard-guide.md](docs/dashboard-guide.md) | Dashboard API and page guide. |
+| [docs/configuration.md](docs/configuration.md) | Configuration items, path strategy, and environment variables. |
+| [docs/prd-schema-gap.md](docs/prd-schema-gap.md) | Gap list between the PRD entity/relationship model and the current schema. |
+| [docs/deployment-runbook.md](docs/deployment-runbook.md) | Linux / systemd / Cloudflare / troubleshooting. |
+| [docs/database-schema.md](docs/database-schema.md) | SQLite schema and table structure. |
+| [docs/memory-lifecycle.md](docs/memory-lifecycle.md) | Memory write, summary, decay, and retrieval lifecycle. |
+| [docs/hooks-and-automation.md](docs/hooks-and-automation.md) | hooks, cron, and heartbeat automation. |
+
+## Directory Overview
+
+```text
+packages/imprint_dashboard/   Dashboard
+packages/imprint_telegram/    Telegram Bot API MCP
+packages/imprint_utils/       system_status / webpage / Spotify tools
+hooks/                        Claude Code hooks
+cron-prompts/                 Scheduled-task prompt templates
+deploy/                       systemd service templates
+docs/                         Architecture, API, deployment, and tutorial docs
+examples/                     Examples such as CLAUDE.md
+```
+
+## Production Deployment
+
+For Linux servers, systemd templates are recommended:
+
+```bash
+sudo cp deploy/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now memo-clover@$USER
+sudo systemctl enable --now imprint-dashboard@$USER
+sudo systemctl enable --now imprint-telegram@$USER
+```
+
+For deployment details, see [deploy/README.md](deploy/README.md) and [docs/deployment-runbook.md](docs/deployment-runbook.md).
+
+## Security Notes
+
+- Do not commit a real `.env`.
+- Do not expose `TELEGRAM_BOT_TOKEN`, Cloudflare tokens, or OAuth credentials.
+- `IMPRINT_DATA_DIR` may contain private memories, conversations, relationship snapshots, and logs.
+- Before open-sourcing, check `data/`, `memories/`, `logs/`, and `.claude/` for personal data.
+
+## Credits
+
+- [MemoClover](https://github.com/Qizhan7/MemoClover)
+- [Anthropic Claude Code](https://docs.anthropic.com/)
+- OpenAI ChatGPT Codex
+- Google Gemini
+- [Ollama](https://ollama.com)
+- [bge-m3](https://huggingface.co/BAAI/bge-m3)
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+<a id="中文"></a>
+
+# Claude Imprint
+
+**[English](#claude-imprint) | 中文**
+
 Claude Imprint 是一个自托管的 Claude 长期记忆系统：它把 Claude Code、Claude.ai、Telegram 等入口接到同一份记忆库里，让对话、摘要、任务状态和跨渠道上下文可以持续保存、检索和复用。
 
 本仓库基于 **MemoClover**（Python 包名 `memo-clover` / `memo_clover`），在独立的 Claude 长期记忆核心驱动之上补充 Dashboard、多渠道消息、自动化任务、Telegram 通知、Cloudflare Tunnel 接入和部署模板。
