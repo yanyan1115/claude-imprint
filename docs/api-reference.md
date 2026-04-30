@@ -375,7 +375,16 @@ No similar memory pairs found above threshold
 
 ### `memory_reindex`
 
-Rebuilds all memory embeddings using the current embedding provider.
+Rebuilds recoverable search indexes for the current SQLite database.
+
+The tool runs these targets in order:
+
+| Target | Behavior |
+|---|---|
+| `memory_vectors` | Deletes and rebuilds memory embeddings using the current embedding provider. |
+| `memories_fts` | Drops/recreates the FTS5 table and repopulates it from `memories` with `segment_cjk()`. |
+| `conversation_log_fts` | Drops/recreates the FTS5 table and repopulates it from `conversation_log` with `segment_cjk()`. |
+| `bank_chunks` | Clears and rebuilds Markdown knowledge-bank chunks from `$IMPRINT_DATA_DIR/memory/bank/*.md`. |
 
 Parameters: none.
 
@@ -390,7 +399,15 @@ Example:
 Example output:
 
 ```text
-Reindexed 42/42 memories (0 failed). Provider: ollama, model: bge-m3
+memory_reindex completed: success
+Database: /home/user/.imprint/memory.db
+Provider: ollama, model: bge-m3
+Started: 2026-04-30 10:15:02
+Finished: 2026-04-30 10:15:05
+- memory_vectors: ok, rebuilt 42/42 memories, 0 failed
+- memories_fts: ok, rebuilt 42 rows
+- conversation_log_fts: ok, rebuilt 318 rows
+- bank_chunks: ok, cleared 12 rows, indexed 3 files, wrote 12 chunks, skipped 0 files
 ```
 
 ---
@@ -1945,4 +1962,3 @@ text/html
 ```
 
 The page contains embedded CSS, JavaScript, bilingual labels, modal editors, and all client-side calls to the API routes documented above.
-

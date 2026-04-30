@@ -463,6 +463,14 @@ Both FTS tables are populated through triggers that call the custom SQLite funct
 - If `jieba` is installed, CJK text is segmented with `jieba.cut_for_search`.
 - If `jieba` is not installed, the fallback separates CJK characters for basic matching.
 
+### Rebuild Semantics
+
+`memory_reindex` is the supported recovery path for these derived indexes. It drops and recreates `memories_fts` and `conversation_log_fts`, then repopulates them from the canonical content tables using `segment_cjk()`. This is intentionally different from SQLite's built-in FTS5 `rebuild` command, because the application stores segmented CJK text in the FTS tables rather than relying on the default tokenizer.
+
+The roadmap shorthand `conversation_fts` refers to the actual table `conversation_log_fts`.
+
+`bank_chunks` is not an FTS5 table. It is rebuilt by clearing chunk rows and re-indexing Markdown files from `$IMPRINT_DATA_DIR/memory/bank/*.md`.
+
 ---
 
 ## Indexes
@@ -581,4 +589,3 @@ These notes help reconcile PRD wording, Dashboard compatibility code, and actual
 | `resolved=false` default in PRD examples | Current database default is `resolved = 1`. |
 | `rolling_summaries` table from earlier planning | Current actual table is `summaries`. |
 | `relationship_snapshots` table from earlier planning | No table; relationship snapshot is read from `$IMPRINT_DATA_DIR/CLAUDE.md`. |
-

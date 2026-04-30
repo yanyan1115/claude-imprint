@@ -513,6 +513,48 @@ imprint-memory
 
 或通过可用的客户端调用 `memory_reindex` 工具。
 
+### SQLite FTS5 或 bank_chunks 索引异常
+
+症状：
+
+- `memory_search` 对明显存在的中文、英文或中英混合内容返回空结果。
+- `conversation_search` 返回空结果，但 `conversation_log` 中能直接看到对应记录。
+- 日志中出现 `database disk image is malformed`、`no such table: memories_fts`、`no such table: conversation_log_fts`、`malformed MATCH expression` 等 SQLite/FTS 错误。
+- `$IMPRINT_DATA_DIR/memory/bank/*.md` 中有内容，但搜索不到对应知识库条目。
+
+恢复步骤：
+
+1. 停止写入进程，避免恢复期间继续写库。
+
+   ```bash
+   pkill -f "imprint-memory --http"
+   pkill -f "imprint_dashboard/dashboard.py"
+   ```
+
+2. 备份数据库和 WAL 文件。
+
+   ```bash
+   cd "$IMPRINT_DATA_DIR"
+   cp memory.db "memory.db.backup.$(date +%Y%m%d-%H%M%S)"
+   cp memory.db-wal "memory.db-wal.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+   cp memory.db-shm "memory.db-shm.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+   ```
+
+3. 重启 `imprint-memory`，通过 MCP 调用 `memory_reindex`。
+
+   该工具会输出每个目标的状态：`memory_vectors`、`memories_fts`、`conversation_log_fts`、`bank_chunks`。
+
+4. 验证回归查询。
+
+   ```text
+   memory_search("SQLite")
+   memory_search("检索")
+   memory_search("SQLite FTS5 检索")
+   conversation_search("telegram")
+   ```
+
+5. 如果 `memory_reindex` 仍失败，保留备份文件和完整输出，再检查是否是主表损坏。FTS 表和 `bank_chunks` 都是派生索引；`memories`、`conversation_log`、`memory/bank/*.md` 才是恢复的权威来源。
+
 ### SQLite database is locked
 
 核心连接设置了 WAL 和 busy timeout，但长时间写入或多进程错配仍可能造成锁等待。
@@ -558,4 +600,3 @@ journalctl -u imprint-memory@$USER -n 100 --no-pager
 ```
 
 如果新增或修改 MCP tool，Claude.ai connector 侧通常需要断开并重连，才能重新发现工具。
-

@@ -170,5 +170,23 @@ class DataDirPolicyTests(unittest.TestCase):
         self.assertIn("Environment=IMPRINT_DATA_DIR=/home/%i/.imprint", service)
 
 
+class ReindexDocumentationTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(__file__).parent.parent
+
+    def test_memory_reindex_docs_cover_derived_indexes(self):
+        api = (self.root / "docs/api-reference.md").read_text(encoding="utf-8")
+        runbook = (self.root / "docs/deployment-runbook.md").read_text(encoding="utf-8")
+        lifecycle = (self.root / "docs/memory-lifecycle.md").read_text(encoding="utf-8")
+
+        for text in (api, runbook, lifecycle):
+            self.assertIn("memories_fts", text)
+            self.assertIn("conversation_log_fts", text)
+            self.assertIn("bank_chunks", text)
+
+        self.assertIn("SQLite FTS5 或 bank_chunks 索引异常", runbook)
+        self.assertIn("SQLite FTS5 检索", lifecycle)
+
+
 if __name__ == "__main__":
     unittest.main()

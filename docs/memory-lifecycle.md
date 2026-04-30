@@ -246,6 +246,23 @@ Conversation pool 来自 `conversation_log`：
 
 当前 conversation pool 没有 vector 通道。
 
+### Reindex / Recovery
+
+`memory_reindex` 是检索派生索引的统一恢复入口。它会按顺序处理：
+
+1. `memory_vectors`：按当前 embedding provider/model 删除并重建记忆向量。
+2. `memories_fts`：重建 memory FTS5 表，并用 `segment_cjk(content)` 回填。
+3. `conversation_log_fts`：重建 conversation FTS5 表，并用 `segment_cjk(content)` 回填。
+4. `bank_chunks`：清空并重新扫描 `$IMPRINT_DATA_DIR/memory/bank/*.md`。
+
+重建后应至少验证三类查询：
+
+- 中文：例如 `检索`、`攀岩`。
+- 英文：例如 `SQLite`、`heartbeat`。
+- 中英混合：例如 `SQLite FTS5 检索`。
+
+注意：规划中偶尔出现的 `conversation_fts` 是简称；实际表名是 `conversation_log_fts`。
+
 ### Ranking 和副作用
 
 `unified_search()` 使用：
