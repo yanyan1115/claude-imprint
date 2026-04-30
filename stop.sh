@@ -27,7 +27,7 @@ stop_pid "Dashboard"    .pid-dashboard
 stop_pid "Telegram"     .pid-telegram
 
 # Cleanup: kill any orphan processes
-pkill -f "imprint-memory --http" 2>/dev/null || true
+pkill -f "memo-clover --http" 2>/dev/null || true
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 
 IS_MAC=false

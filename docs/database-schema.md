@@ -1,13 +1,13 @@
 # Database Schema
 
-This document describes the SQLite schema used by the current `imprint-memory` codebase.
+This document describes the SQLite schema used by the current `memo-clover` codebase.
 
 Source of truth:
 
-- `D:\APP\imprint-memory\imprint_memory\db.py`
+- `D:\APP\MemoClover\memo_clover\db.py`
 - Related write/read logic in `memory_manager.py`, `conversation.py`, `bus.py`, and `tasks.py`
 
-The database is created automatically when `imprint_memory.db._get_db()` opens a connection. The default path is:
+The database is created automatically when `memo_clover.db._get_db()` opens a connection. The default path is:
 
 ```text
 $IMPRINT_DATA_DIR/memory.db
@@ -541,7 +541,7 @@ Current archive semantics:
 | Protected by category/rate | `decay_rate = 0`, often from categories like `facts`, `core`, or `core_profile` |
 | Surfacing candidate | `resolved = 0`, `arousal > 0.7`, `importance > 0`, `pinned = 0`, `superseded_by IS NULL` |
 
-Dashboard code dynamically checks for optional columns such as `archived`, `is_archived`, `decay_score`, and `status` for compatibility with possible older or future databases, but those columns are not created by the current `imprint_memory/db.py`.
+Dashboard code dynamically checks for optional columns such as `archived`, `is_archived`, `decay_score`, and `status` for compatibility with possible older or future databases, but those columns are not created by the current `memo_clover/db.py`.
 
 ---
 

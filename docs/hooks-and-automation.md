@@ -30,7 +30,7 @@ flowchart TD
     O --> F
 
     S["Heartbeat Agent"] --> T["claude -p heartbeat prompt"]
-    T --> U["imprint-memory MCP"]
+    T --> U["memo-clover MCP"]
     T --> V["telegram / imprint-telegram MCP"]
     S --> W["data/heartbeat_session.txt"]
 ```
@@ -159,7 +159,7 @@ telegram, discord, slack, whatsapp, signal
 processor 调用：
 
 ```text
-imprint_memory.conversation.log_message()
+memo_clover.conversation.log_message()
 ```
 
 写入字段：
@@ -243,8 +243,8 @@ nohup python3 scripts/compress_context.py recent_context.md >> logs/compress.log
 
 当前 `scripts/compress_context.py` 的真实行为：
 
-1. 尝试导入 `from imprint_memory.compress import compress_context`。
-2. 当前 `imprint_memory/compress.py` 中实际函数名是 `compress_file()`，没有 `compress_context`。
+1. 尝试导入 `from memo_clover.compress import compress_context`。
+2. 当前 `memo_clover/compress.py` 中实际函数名是 `compress_file()`，没有 `compress_context`。
 3. 因此会走 fallback：保留最后 60 行。
 
 如果 `scripts/compress_context.py` 不存在，hook 自己也会 fallback：
@@ -351,8 +351,8 @@ MCP 配置选择：
 
 | 文件 | 内容 |
 |---|---|
-| `cron-mcp.json` | 只包含 `imprint-memory`。 |
-| `cron-mcp-full.json` | 包含 `imprint-memory`、`imprint-telegram`、`imprint-utils`。 |
+| `cron-mcp.json` | 只包含 `memo-clover`。 |
+| `cron-mcp-full.json` | 包含 `memo-clover`、`imprint-telegram`、`imprint-utils`。 |
 
 如果 Claude 输出第一条 `SENT_TG:`，脚本会：
 
@@ -426,7 +426,7 @@ flowchart TD
     G -->|"否"| I["正常 prompt"]
     H --> J["claude -p prompt"]
     I --> J
-    J --> K["附加 MCP: telegram plugin, imprint-memory, imprint-telegram"]
+    J --> K["附加 MCP: telegram plugin, memo-clover, imprint-telegram"]
     K --> L{"存在旧 session_id?"}
     L -->|"是"| M["--resume session_id"]
     L -->|"否"| N["新会话"]
@@ -483,7 +483,7 @@ MCP config 动态包含：
 | 名称 | 命令 |
 |---|---|
 | `telegram` | `bun run --cwd ~/.claude/plugins/cache/claude-plugins-official/telegram/<latest> --shell=bun --silent start` |
-| `imprint-memory` | `imprint-memory` |
+| `memo-clover` | `memo-clover` |
 | `imprint-telegram` | 如果 `packages/imprint_telegram/server.py` 存在，则 `python3 <server.py>` |
 
 子进程环境：

@@ -19,15 +19,15 @@ Guide the user through setting up Claude Imprint's core memory system.
 
 ### 1. Install and Register MCP Server
 ```bash
-pip install git+https://github.com/Qizhan7/imprint-memory.git
+pip install git+https://github.com/Qizhan7/MemoClover.git
 ```
 
 Add to `.mcp.json` in the project root (or `~/.claude/.mcp.json` for global):
 ```json
 {
   "mcpServers": {
-    "imprint-memory": {
-      "command": "imprint-memory"
+    "memo-clover": {
+      "command": "memo-clover"
     }
   }
 }
@@ -51,7 +51,7 @@ Set custom URL if needed: `export OLLAMA_URL=http://localhost:11434`
 ### 4. Optional: Enable HTTP Mode (for Claude.ai remote access)
 Start the memory server in HTTP mode:
 ```bash
-imprint-memory --http
+memo-clover --http
 ```
 This serves on port 8000. Use Cloudflare Tunnel or similar to expose it.
 

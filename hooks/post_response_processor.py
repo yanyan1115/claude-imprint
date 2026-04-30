@@ -21,8 +21,8 @@ project_dir = sys.argv[3]
 
 sys.path.insert(0, str(Path(project_dir) / "packages"))
 
-from imprint_memory.conversation import log_message, get_recent, format_recent
-from imprint_memory.db import now_str
+from memo_clover.conversation import log_message, get_recent, format_recent
+from memo_clover.db import now_str
 
 # ─── Config ───────────────────────────────────────────────
 DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(Path.home() / ".imprint")))

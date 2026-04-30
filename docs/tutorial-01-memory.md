@@ -98,10 +98,10 @@ pip install -r requirements.txt
 
 这一步让 Claude Code 在本地也能用记忆工具。
 
-> "帮我把 imprint-memory 注册为 user 级别的 MCP server。"
+> "帮我把 memo-clover 注册为 user 级别的 MCP server。"
 
 ```
-claude mcp add -s user imprint-memory -- imprint-memory
+claude mcp add -s user memo-clover -- memo-clover
 ```
 
 注册之后，所有 Claude Code 窗口都能用 `memory_remember`、`memory_search` 等工具了。

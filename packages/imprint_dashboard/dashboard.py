@@ -18,7 +18,7 @@ import psutil
 import uvicorn
 import sys
 
-from imprint_memory import memory_manager as mem
+from memo_clover import memory_manager as mem
 
 app = FastAPI(title="Claude Imprint")
 BASE = Path(__file__).parent.parent.parent  # packages/imprint_dashboard -> project root
@@ -33,7 +33,7 @@ COMPONENTS = {
     "memory_http": {
         "name": "🧠 Memory HTTP",
         "pid_file": ".pid-http",
-        "start_cmd": ["imprint-memory", "--http"],
+        "start_cmd": ["memo-clover", "--http"],
         "log_file": "logs/http.log",
         "type": "background",
         "check_port": 8000,

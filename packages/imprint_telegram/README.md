@@ -22,7 +22,7 @@
 4. Memory HTTP 可以启动：
 
    ```bash
-   imprint-memory --http
+   memo-clover --http
    ```
 
 5. Dashboard 可以访问：
@@ -61,8 +61,8 @@ $env:IMPRINT_DATA_DIR="$HOME\.imprint"
 
 | 项目 | 示例 | 说明 |
 | --- | --- | --- |
-| Bot 显示名称 | `My Imprint Memory` | 显示在 Telegram 里的名字。 |
-| Bot username | `my_imprint_memory_bot` | 必须全网唯一，通常以 `bot` 结尾。 |
+| Bot 显示名称 | `My MemoClover` | 显示在 Telegram 里的名字。 |
+| Bot username | `my_memo_clover_bot` | 必须全网唯一，通常以 `bot` 结尾。 |
 
 创建成功后，BotFather 会返回一个 token，例如：
 
@@ -129,7 +129,7 @@ TZ_OFFSET=8
 | `TELEGRAM_BOT_TOKEN` | 主动发送必填 | BotFather 返回的 Bot API token。 |
 | `TELEGRAM_CHAT_ID` | 默认接收人必填 | `send_telegram` 未显式传 `chat_id` 时使用。 |
 | `TZ_OFFSET` | 可选 | Dashboard 与日志日期偏移，例如 UTC+8 填 `8`。 |
-| `PATH` | 部署相关 | systemd 下要能找到 `claude`、`python3`、`bun`、`imprint-memory` 等命令。 |
+| `PATH` | 部署相关 | systemd 下要能找到 `claude`、`python3`、`bun`、`memo-clover` 等命令。 |
 
 ## 5. 配置 Telegram 双向聊天
 
@@ -175,7 +175,7 @@ MCP 配置示例：
 
 仓库根目录已有 `cron-mcp-full.json`，其中包含：
 
-- `imprint-memory`
+- `memo-clover`
 - `imprint-telegram`
 - `imprint-utils`
 
@@ -379,7 +379,7 @@ coral-window-7301
 请从记忆库里查找 Telegram 检索验证码。
 ```
 
-如果当前会话已配置 `imprint-memory` MCP，预期可以检索到 Telegram 端写入的记忆。
+如果当前会话已配置 `memo-clover` MCP，预期可以检索到 Telegram 端写入的记忆。
 
 ## 11. 数据流说明
 

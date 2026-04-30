@@ -1,6 +1,6 @@
 [Unit]
 Description=Cloudflare Tunnel for Imprint
-After=imprint-memory.service
+After=memo-clover.service
 
 [Service]
 Type=simple

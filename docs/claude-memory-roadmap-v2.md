@@ -13,7 +13,7 @@
 
 ### Phase 4：全局架构与文档对齐（已完成）
 
-今天已完成 Claude Imprint / imprint-memory 的架构文档、API 文档、配置文档、Dashboard 文档、数据库 schema 文档、部署 runbook、hooks 自动化文档、memory lifecycle 文档的系统性梳理与对齐，并已提交归档。
+今天已完成 Claude Imprint / memo-clover 的架构文档、API 文档、配置文档、Dashboard 文档、数据库 schema 文档、部署 runbook、hooks 自动化文档、memory lifecycle 文档的系统性梳理与对齐，并已提交归档。
 
 完成内容：
 - 明确 `IMPRINT_DATA_DIR` / `IMPRINT_DB` / OAuth / systemd / hooks 的配置边界。
@@ -27,7 +27,7 @@
 
 1. `compress_context` 漂移修复
    - `scripts/compress_context.py` 改为调用核心包的 `compress_file()`。
-   - `imprint_memory.compress` 补 `compress_context()` 兼容别名。
+   - `memo_clover.compress` 补 `compress_context()` 兼容别名。
    - wrapper 只有在核心包不可导入时才走 tail fallback。
 
 2. `IMPRINT_DATA_DIR` 路径策略统一
@@ -47,7 +47,7 @@ Runtime 冒烟测试结果：
 - Dashboard 可在 `localhost:3000` 启动。
 - `/api/status`、`/api/summaries`、`/api/short-term-memory` 可返回 JSON。
 - Summary 核心层、MCP tool 层、Dashboard HTTP PUT/DELETE 均通过真实调用测试。
-- `compress_context.py` 已确认进入 `imprint_memory.compress` 链路；本机未运行 Ollama 时会按核心包逻辑降级保留最近消息。
+- `compress_context.py` 已确认进入 `memo_clover.compress` 链路；本机未运行 Ollama 时会按核心包逻辑降级保留最近消息。
 - Windows 本地环境下 Dashboard 的进程状态探测会显示 `memory_http.running=false`，原因是当前状态检测依赖 `lsof` / `pgrep`，属于后续跨平台兼容任务，不影响服务实际监听。
 
 ---
@@ -325,7 +325,7 @@ surfaced = get_surfaced_memories(threshold=0.7)
 确保 `docker compose up -d` 一条命令启动所有服务：
 - [x] SQLite + FTS5（已包含在主服务里）
 - [x] Ollama + bge-m3（向量检索，可选 profile）
-- [x] MCP Server（`imprint-memory --http`）
+- [x] MCP Server（`memo-clover --http`）
 - [x] Dashboard（管理面板）
 - [x] Cloudflare Tunnel（临时 tunnel 可选 profile；Telegram channel 因依赖宿主机 Claude Code 登录态暂不放入 compose）
 

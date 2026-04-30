@@ -2,7 +2,7 @@
 
 Claude Imprint 是一个自托管的 Claude 长期记忆系统：它把 Claude Code、Claude.ai、Telegram 等入口接到同一份记忆库里，让对话、摘要、任务状态和跨渠道上下文可以持续保存、检索和复用。
 
-本仓库基于 `imprint-memory`，在持久记忆之上补充 Dashboard、多渠道消息、自动化任务、Telegram 通知、Cloudflare Tunnel 接入和部署模板。
+本仓库基于 **MemoClover**（Python 包名 `memo-clover` / `memo_clover`），在独立的 Claude 长期记忆核心驱动之上补充 Dashboard、多渠道消息、自动化任务、Telegram 通知、Cloudflare Tunnel 接入和部署模板。
 
 ## 你能用它做什么
 
@@ -140,7 +140,7 @@ $env:IMPRINT_DATA_DIR="$HOME\.imprint"
 启动 Memory HTTP：
 
 ```bash
-imprint-memory --http
+memo-clover --http
 ```
 
 另开一个终端启动 Dashboard：
@@ -160,7 +160,7 @@ http://localhost:3000
 注册记忆 MCP：
 
 ```bash
-claude mcp add -s user imprint-memory -- imprint-memory
+claude mcp add -s user memo-clover -- memo-clover
 ```
 
 安装 hooks，让对话自动进入记忆链路：
@@ -176,7 +176,7 @@ claude settings add-hook Stop "bash $(pwd)/hooks/post-response.sh"
 
 最小流程：
 
-1. 启动 `imprint-memory --http`。
+1. 启动 `memo-clover --http`。
 2. 用 Cloudflare Tunnel 暴露 `localhost:8000`。
 3. 在 Claude.ai Settings -> Connectors 添加 Custom Connector。
 4. 在 Claude.ai 中调用 memory search / remember 工具验证。
@@ -248,7 +248,7 @@ Linux 服务器推荐使用 systemd 模板：
 ```bash
 sudo cp deploy/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now imprint-memory@$USER
+sudo systemctl enable --now memo-clover@$USER
 sudo systemctl enable --now imprint-dashboard@$USER
 sudo systemctl enable --now imprint-telegram@$USER
 ```
@@ -264,8 +264,10 @@ sudo systemctl enable --now imprint-telegram@$USER
 
 ## 致谢
 
-- [imprint-memory](https://github.com/Qizhan7/imprint-memory)
+- [MemoClover](https://github.com/Qizhan7/MemoClover)
 - [Anthropic Claude Code](https://docs.anthropic.com/)
+- OpenAI ChatGPT Codex
+- Google Gemini
 - [Ollama](https://ollama.com)
 - [bge-m3](https://huggingface.co/BAAI/bge-m3)
 

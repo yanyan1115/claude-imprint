@@ -27,7 +27,7 @@ if is_running .pid-http; then
     echo "   ✓ Memory HTTP already running"
 else
     echo "   Starting Memory HTTP..."
-    nohup imprint-memory --http > logs/http.log 2>&1 &
+    nohup memo-clover --http > logs/http.log 2>&1 &
     echo $! > .pid-http
     sleep 2
     echo "   ✓ Memory HTTP started (PID: $!, port 8000)"

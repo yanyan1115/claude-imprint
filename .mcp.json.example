@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "imprint-memory": {
-      "command": "imprint-memory"
+    "memo-clover": {
+      "command": "memo-clover"
     }
   }
 }

@@ -1,12 +1,12 @@
 [Unit]
-Description=Imprint Memory HTTP Server
+Description=MemoClover HTTP Server
 After=network.target
 
 [Service]
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/claude-imprint
-ExecStart=/home/%i/.local/bin/imprint-memory --http
+ExecStart=/home/%i/.local/bin/memo-clover --http
 Restart=on-failure
 RestartSec=5
 

@@ -2,16 +2,16 @@
 
 This document describes the currently implemented external interfaces:
 
-1. `imprint-memory` core MCP tools.
+1. `memo-clover` core MCP tools.
 2. `claude-imprint` Dashboard HTTP API.
 
 Source of truth:
 
-- `D:\APP\imprint-memory\imprint_memory\server.py`
-- `D:\APP\imprint-memory\imprint_memory\memory_manager.py`
-- `D:\APP\imprint-memory\imprint_memory\conversation.py`
-- `D:\APP\imprint-memory\imprint_memory\bus.py`
-- `D:\APP\imprint-memory\imprint_memory\tasks.py`
+- `D:\APP\MemoClover\memo_clover\server.py`
+- `D:\APP\MemoClover\memo_clover\memory_manager.py`
+- `D:\APP\MemoClover\memo_clover\conversation.py`
+- `D:\APP\MemoClover\memo_clover\bus.py`
+- `D:\APP\MemoClover\memo_clover\tasks.py`
 - `D:\APP\claude-imprint\claude-imprint\packages\imprint_dashboard\dashboard.py`
 
 No unimplemented tools are documented here. In particular:
@@ -26,14 +26,14 @@ No unimplemented tools are documented here. In particular:
 
 ### MCP Tools
 
-The `imprint-memory` MCP server is exposed by:
+The `memo-clover` MCP server is exposed by:
 
 ```bash
-imprint-memory
-imprint-memory --http
+memo-clover
+memo-clover --http
 ```
 
-All tools in `imprint_memory.server` return plain text strings to the MCP caller. Some lower-level functions return dictionaries internally, but the public MCP tool wrappers format them as text.
+All tools in `memo_clover.server` return plain text strings to the MCP caller. Some lower-level functions return dictionaries internally, but the public MCP tool wrappers format them as text.
 
 Examples in this section show tool arguments as JSON-like objects because MCP clients pass structured arguments.
 
@@ -55,7 +55,7 @@ All Dashboard API paths are relative to this origin.
 
 ---
 
-# Part 1: imprint-memory MCP Tools
+# Part 1: memo-clover MCP Tools
 
 ## Tool Summary
 
@@ -1121,7 +1121,7 @@ Component routes use the following `{component}` path values:
 
 | Component key | Type | Meaning |
 |---|---|---|
-| `memory_http` | `background` | `imprint-memory --http`, checked by port `8000`. |
+| `memory_http` | `background` | `memo-clover --http`, checked by port `8000`. |
 | `tunnel` | `background` | `cloudflared tunnel run my-tunnel`. |
 | `telegram` | `terminal` | Claude Code Telegram channel process. |
 
@@ -1504,7 +1504,7 @@ Error examples:
 
 ## `DELETE /api/memories/{memory_id}`
 
-Deletes one memory through `imprint_memory.memory_manager.delete_memory()`.
+Deletes one memory through `memo_clover.memory_manager.delete_memory()`.
 
 Path parameters:
 

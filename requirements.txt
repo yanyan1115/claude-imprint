@@ -1,7 +1,7 @@
 # Core memory system
-imprint-memory @ git+https://github.com/Qizhan7/imprint-memory.git
+memo-clover @ git+https://github.com/Qizhan7/MemoClover.git
 
-# HTTP mode (imprint-memory --http) + Dashboard
+# HTTP mode (memo-clover --http) + Dashboard
 uvicorn>=0.34.0
 starlette>=0.27.0
 fastapi>=0.115.0

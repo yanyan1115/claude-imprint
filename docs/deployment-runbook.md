@@ -1,6 +1,6 @@
 # Deployment Runbook
 
-本文档是一份面向运维的启停和排障手册，按当前 `claude-imprint` 与 `imprint-memory` 代码实际行为编写。
+本文档是一份面向运维的启停和排障手册，按当前 `claude-imprint` 与 `memo-clover` 代码实际行为编写。
 
 ---
 
@@ -8,7 +8,7 @@
 
 | 组件 | 启动命令 | 端口 | 日志 |
 |---|---|---:|---|
-| Memory HTTP | `imprint-memory --http` | `8000` | `logs/http.log` 或 systemd journal |
+| Memory HTTP | `memo-clover --http` | `8000` | `logs/http.log` 或 systemd journal |
 | Dashboard | `python3 packages/imprint_dashboard/dashboard.py` | `3000` | `logs/dashboard.log` 或 systemd journal |
 | Cloudflare Tunnel | `cloudflared tunnel run my-tunnel` | n/a | `logs/tunnel.log` 或 systemd journal |
 | Telegram Channel | `claude --permission-mode auto --channels plugin:telegram@claude-plugins-official` | n/a | Linux: `logs/telegram.log`; macOS: Terminal 窗口 |
@@ -22,7 +22,7 @@
 
 ```bash
 cd ~/claude-imprint
-source .venv/bin/activate  # 如果 imprint-memory 安装在虚拟环境中
+source .venv/bin/activate  # 如果 memo-clover 安装在虚拟环境中
 
 export IMPRINT_DATA_DIR="$HOME/.imprint"
 export TZ_OFFSET=0
@@ -32,7 +32,7 @@ export TZ_OFFSET=0
 
 `start.sh` 会按顺序尝试启动：
 
-1. `imprint-memory --http`
+1. `memo-clover --http`
 2. `cloudflared tunnel run my-tunnel`
 3. Claude Telegram channel
 4. Heartbeat Agent
@@ -78,7 +78,7 @@ cd ~/claude-imprint
 
 - 读取上述 PID 文件并发送 `kill`。
 - 删除已处理的 PID 文件。
-- 额外执行 `pkill -f "imprint-memory --http"`。
+- 额外执行 `pkill -f "memo-clover --http"`。
 - 额外执行 `pkill -f "cloudflared tunnel"`。
 - Linux 下额外执行 `pkill -f "channels plugin:telegram"`。
 - macOS 下提示手动关闭 Telegram Terminal 窗口。
@@ -103,10 +103,10 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-如果使用自维护的 `imprint-memory` fork：
+如果使用自维护的 `memo-clover` fork：
 
 ```bash
-pip install git+https://github.com/yanyan1115/imprint-memory.git --force-reinstall --no-deps
+pip install git+https://github.com/yanyan1115/MemoClover.git --force-reinstall --no-deps
 ```
 
 ### 检查模板路径
@@ -116,7 +116,7 @@ pip install git+https://github.com/yanyan1115/imprint-memory.git --force-reinsta
 | 项 | 默认值 |
 |---|---|
 | `WorkingDirectory` | `/home/%i/claude-imprint` |
-| Memory `ExecStart` | `/home/%i/.local/bin/imprint-memory --http` |
+| Memory `ExecStart` | `/home/%i/.local/bin/memo-clover --http` |
 | Dashboard `ExecStart` | `/usr/bin/python3 packages/imprint_dashboard/dashboard.py` |
 | Heartbeat `ExecStart` | `/usr/bin/python3 -u packages/imprint_heartbeat/agent.py` |
 | Telegram `ExecStart` | `/home/%i/.local/bin/claude --permission-mode auto --channels plugin:telegram@claude-plugins-official` |
@@ -125,7 +125,7 @@ pip install git+https://github.com/yanyan1115/imprint-memory.git --force-reinsta
 如果服务安装在 `.venv` 中，需要先修改模板，例如：
 
 ```ini
-ExecStart=/home/%i/claude-imprint/.venv/bin/imprint-memory --http
+ExecStart=/home/%i/claude-imprint/.venv/bin/memo-clover --http
 ```
 
 Dashboard 和 Heartbeat 若需要虚拟环境中的依赖，也应改成 `.venv/bin/python`：
@@ -146,7 +146,7 @@ Environment=TZ_OFFSET=0
 
 涉及文件：
 
-- `deploy/imprint-memory@.service`
+- `deploy/memo-clover@.service`
 - `deploy/imprint-dashboard@.service`
 - `deploy/imprint-heartbeat@.service`
 
@@ -178,7 +178,7 @@ sudo systemctl daemon-reload
 建议先启动 Memory，再启动依赖它的组件：
 
 ```bash
-sudo systemctl enable --now imprint-memory@$USER
+sudo systemctl enable --now memo-clover@$USER
 sudo systemctl enable --now imprint-dashboard@$USER
 sudo systemctl enable --now imprint-heartbeat@$USER
 ```
@@ -193,7 +193,7 @@ sudo systemctl enable --now imprint-telegram@$USER
 ### 查看状态
 
 ```bash
-sudo systemctl status imprint-memory@$USER --no-pager
+sudo systemctl status memo-clover@$USER --no-pager
 sudo systemctl status imprint-dashboard@$USER --no-pager
 sudo systemctl status imprint-heartbeat@$USER --no-pager
 ```
@@ -201,7 +201,7 @@ sudo systemctl status imprint-heartbeat@$USER --no-pager
 ### 重启
 
 ```bash
-sudo systemctl restart imprint-memory@$USER
+sudo systemctl restart memo-clover@$USER
 sudo systemctl restart imprint-dashboard@$USER
 sudo systemctl restart imprint-heartbeat@$USER
 ```
@@ -209,7 +209,7 @@ sudo systemctl restart imprint-heartbeat@$USER
 ### 停止和取消开机启动
 
 ```bash
-sudo systemctl disable --now imprint-memory@$USER
+sudo systemctl disable --now memo-clover@$USER
 sudo systemctl disable --now imprint-dashboard@$USER
 sudo systemctl disable --now imprint-heartbeat@$USER
 sudo systemctl disable --now imprint-tunnel@$USER
@@ -226,7 +226,7 @@ sudo systemctl disable --now imprint-telegram@$USER
 
 | 文件 | 来源 |
 |---|---|
-| `logs/http.log` | `imprint-memory --http` stdout/stderr |
+| `logs/http.log` | `memo-clover --http` stdout/stderr |
 | `logs/tunnel.log` | `cloudflared tunnel run my-tunnel` stdout/stderr |
 | `logs/telegram.log` | Linux Telegram channel stdout/stderr |
 | `logs/agent.log` | Heartbeat Agent stdout/stderr |
@@ -261,7 +261,7 @@ systemd unit 默认没有写入项目 `logs/*.log`，stdout/stderr 进入 journa
 查看日志：
 
 ```bash
-journalctl -u imprint-memory@$USER -f
+journalctl -u memo-clover@$USER -f
 journalctl -u imprint-dashboard@$USER -f
 journalctl -u imprint-heartbeat@$USER -f
 journalctl -u imprint-tunnel@$USER -f
@@ -271,7 +271,7 @@ journalctl -u imprint-telegram@$USER -f
 查看最近 200 行：
 
 ```bash
-journalctl -u imprint-memory@$USER -n 200 --no-pager
+journalctl -u memo-clover@$USER -n 200 --no-pager
 ```
 
 ---
@@ -281,7 +281,7 @@ journalctl -u imprint-memory@$USER -n 200 --no-pager
 ### 进程和端口
 
 ```bash
-pgrep -af "imprint-memory --http"
+pgrep -af "memo-clover --http"
 pgrep -af "imprint_dashboard/dashboard.py"
 pgrep -af "cloudflared tunnel"
 pgrep -af "channels plugin:telegram"
@@ -302,12 +302,12 @@ curl -i http://localhost:8000/mcp
 curl -i http://localhost:3000/api/status
 ```
 
-### imprint-console
+### memo-clover-console
 
-如果安装了 `imprint-memory` console script：
+如果安装了 `memo-clover` console script：
 
 ```bash
-imprint-console --status
+memo-clover-console --status
 ```
 
 它会检查：
@@ -331,23 +331,23 @@ imprint-console --status
 处理：
 
 ```bash
-which imprint-memory
-imprint-memory --http
+which memo-clover
+memo-clover --http
 ```
 
 如果使用虚拟环境：
 
 ```bash
 source ~/claude-imprint/.venv/bin/activate
-which imprint-memory
+which memo-clover
 ```
 
 systemd 模式下，确认 `ExecStart` 指向真实可执行文件，然后：
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart imprint-memory@$USER
-journalctl -u imprint-memory@$USER -n 100 --no-pager
+sudo systemctl restart memo-clover@$USER
+journalctl -u memo-clover@$USER -n 100 --no-pager
 ```
 
 ### Dashboard 显示空数据
@@ -357,7 +357,7 @@ journalctl -u imprint-memory@$USER -n 100 --no-pager
 检查服务环境：
 
 ```bash
-systemctl show imprint-memory@$USER -p Environment
+systemctl show memo-clover@$USER -p Environment
 systemctl show imprint-dashboard@$USER -p Environment
 ```
 
@@ -380,7 +380,7 @@ lsof -i :3000
 终止旧进程：
 
 ```bash
-pkill -f "imprint-memory --http"
+pkill -f "memo-clover --http"
 pkill -f "imprint_dashboard/dashboard.py"
 ```
 
@@ -393,7 +393,7 @@ pkill -f "imprint_dashboard/dashboard.py"
 或：
 
 ```bash
-sudo systemctl restart imprint-memory@$USER imprint-dashboard@$USER
+sudo systemctl restart memo-clover@$USER imprint-dashboard@$USER
 ```
 
 ### OAuth 或 Claude.ai connector 连接失败
@@ -507,7 +507,7 @@ export EMBED_MODEL=text-embedding-3-small
 切换 provider 后建议重建 embedding：
 
 ```bash
-imprint-memory
+memo-clover
 # 在 MCP 中调用 memory_reindex
 ```
 
@@ -527,7 +527,7 @@ imprint-memory
 1. 停止写入进程，避免恢复期间继续写库。
 
    ```bash
-   pkill -f "imprint-memory --http"
+   pkill -f "memo-clover --http"
    pkill -f "imprint_dashboard/dashboard.py"
    ```
 
@@ -540,7 +540,7 @@ imprint-memory
    cp memory.db-shm "memory.db-shm.backup.$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
    ```
 
-3. 重启 `imprint-memory`，通过 MCP 调用 `memory_reindex`。
+3. 重启 `memo-clover`，通过 MCP 调用 `memory_reindex`。
 
    该工具会输出每个目标的状态：`memory_vectors`、`memories_fts`、`conversation_log_fts`、`bank_chunks`。
 
@@ -562,7 +562,7 @@ imprint-memory
 处理：
 
 ```bash
-pkill -f "imprint-memory --http"
+pkill -f "memo-clover --http"
 pkill -f "imprint_dashboard/dashboard.py"
 ./start.sh
 ```
@@ -570,7 +570,7 @@ pkill -f "imprint_dashboard/dashboard.py"
 systemd：
 
 ```bash
-sudo systemctl restart imprint-memory@$USER imprint-dashboard@$USER
+sudo systemctl restart memo-clover@$USER imprint-dashboard@$USER
 ```
 
 同时确认没有两套服务分别写不同目录中的数据库，或同一数据库被旧进程长期占用。
@@ -580,14 +580,14 @@ sudo systemctl restart imprint-memory@$USER imprint-dashboard@$USER
 检索调参必须先跑固定评估夹具，再调整参数。当前夹具位于核心包仓库：
 
 ```powershell
-cd D:\APP\imprint-memory
+cd D:\APP\MemoClover
 python -m pytest tests/test_retrieval_eval.py -q
 ```
 
 完整核心包回归：
 
 ```powershell
-cd D:\APP\imprint-memory
+cd D:\APP\MemoClover
 python -m pytest -q
 ```
 
@@ -595,7 +595,7 @@ python -m pytest -q
 
 ```powershell
 cd D:\APP\claude-imprint\claude-imprint
-$env:PYTHONPATH='D:\APP\imprint-memory'
+$env:PYTHONPATH='D:\APP\MemoClover'
 python -m pytest -q
 ```
 
@@ -636,14 +636,14 @@ python -m pytest -q
 
 ## 服务器更新流程参考
 
-如果只更新 `imprint-memory` 包，当前服务器流程可以是：
+如果只更新 `memo-clover` 包，当前服务器流程可以是：
 
 ```bash
 cd ~/claude-imprint
 source .venv/bin/activate
-pip install git+https://github.com/yanyan1115/imprint-memory.git --force-reinstall --no-deps
-pkill -f "imprint-memory --http"
-imprint-memory --http &
+pip install git+https://github.com/yanyan1115/MemoClover.git --force-reinstall --no-deps
+pkill -f "memo-clover --http"
+memo-clover --http &
 ```
 
 如果使用 systemd，推荐改为：
@@ -651,9 +651,9 @@ imprint-memory --http &
 ```bash
 cd ~/claude-imprint
 source .venv/bin/activate
-pip install git+https://github.com/yanyan1115/imprint-memory.git --force-reinstall --no-deps
-sudo systemctl restart imprint-memory@$USER
-journalctl -u imprint-memory@$USER -n 100 --no-pager
+pip install git+https://github.com/yanyan1115/MemoClover.git --force-reinstall --no-deps
+sudo systemctl restart memo-clover@$USER
+journalctl -u memo-clover@$USER -n 100 --no-pager
 ```
 
 如果新增或修改 MCP tool，Claude.ai connector 侧通常需要断开并重连，才能重新发现工具。

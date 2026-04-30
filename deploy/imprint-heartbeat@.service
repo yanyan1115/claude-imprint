@@ -1,6 +1,6 @@
 [Unit]
 Description=Imprint Heartbeat Agent
-After=imprint-memory.service
+After=memo-clover.service
 
 [Service]
 Type=simple

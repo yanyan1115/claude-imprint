@@ -262,7 +262,7 @@ for f in "$DIR"/2*.md; do
     claude -p "$PROMPT
 
 Chat history:
-$CONTENT" --allowedTools "mcp__imprint-memory__memory_remember" 2>/dev/null
+$CONTENT" --allowedTools "mcp__memo-clover__memory_remember" 2>/dev/null
     echo "  Done"
     echo ""
 done

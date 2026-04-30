@@ -11,12 +11,12 @@ from unittest import mock
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from imprint_memory import memory_manager as mem
-from imprint_memory.db import DB_PATH as _orig_db_path
+from memo_clover import memory_manager as mem
+from memo_clover.db import DB_PATH as _orig_db_path
 from chat_cleaner import parse_conversations, split_by_gap
 
 
-from imprint_memory import db as db_mod
+from memo_clover import db as db_mod
 
 class MemoryManagerReleaseTests(unittest.TestCase):
     def setUp(self):
@@ -125,17 +125,17 @@ class CompressContextWrapperTests(unittest.TestCase):
             context_path = Path(f.name)
 
         calls = []
-        fake_compress = types.ModuleType("imprint_memory.compress")
+        fake_compress = types.ModuleType("memo_clover.compress")
         fake_compress.compress_file = lambda path: calls.append(path)
-        fake_package = types.ModuleType("imprint_memory")
+        fake_package = types.ModuleType("memo_clover")
         fake_package.compress = fake_compress
 
         try:
             with mock.patch.dict(
                 sys.modules,
                 {
-                    "imprint_memory": fake_package,
-                    "imprint_memory.compress": fake_compress,
+                    "memo_clover": fake_package,
+                    "memo_clover.compress": fake_compress,
                 },
             ), mock.patch.object(sys, "argv", ["compress_context.py", str(context_path)]):
                 module.main()

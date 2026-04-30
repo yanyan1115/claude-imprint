@@ -1,5 +1,5 @@
 # ─── Imprint Cron Task Runner (Windows) ───
-# Runs a claude CLI task with imprint-memory MCP only (no channel plugins).
+# Runs a claude CLI task with memo-clover MCP only (no channel plugins).
 # Usage: cron-task.ps1 <task-name> <prompt-file>
 #
 # Setup: Create a Windows Task Scheduler task that runs:
@@ -7,7 +7,7 @@
 #
 # Design decisions:
 #   - Runs from $HOME to avoid loading project-level .mcp.json
-#   - Uses cron-mcp.json with only imprint-memory
+#   - Uses cron-mcp.json with only memo-clover
 #   - Captures AI output; if telegram was sent, appends to recent_context.md
 #   - --max-budget-usd caps cost; CLI exits naturally after completion
 

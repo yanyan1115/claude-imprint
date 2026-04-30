@@ -127,8 +127,8 @@ async def run_heartbeat():
                      str(_get_telegram_plugin_dir()),
                      "--shell=bun", "--silent", "start"]
         },
-        "imprint-memory": {
-            "command": "imprint-memory",
+        "memo-clover": {
+            "command": "memo-clover",
             "args": []
         },
     }

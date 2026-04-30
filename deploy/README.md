@@ -29,15 +29,15 @@ sudo cp deploy/*@.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
 # 5. Enable and start
-sudo systemctl enable --now imprint-memory@$USER
+sudo systemctl enable --now memo-clover@$USER
 sudo systemctl enable --now imprint-dashboard@$USER
 sudo systemctl enable --now imprint-heartbeat@$USER
 sudo systemctl enable --now imprint-tunnel@$USER      # if using Cloudflare
 sudo systemctl enable --now imprint-telegram@$USER     # if using Telegram
 
 # 6. Check status
-sudo systemctl status imprint-memory@$USER
-journalctl -u imprint-memory@$USER -f
+sudo systemctl status memo-clover@$USER
+journalctl -u memo-clover@$USER -f
 ```
 
 ## Quick start (without systemd)

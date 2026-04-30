@@ -5,7 +5,7 @@ This document describes the current implementation of the Claude Imprint system 
 It covers two cooperating repositories:
 
 - `claude-imprint`: the full-stack orchestration layer, dashboard, automation, hooks, deployment files, and auxiliary MCP servers.
-- `imprint-memory`: the standalone memory core package installed by `claude-imprint` and exposed through the `imprint-memory` console script.
+- `memo-clover`: the standalone memory core package installed by `claude-imprint` and exposed through the `memo-clover` console script.
 
 The memory core is not vendored inside `claude-imprint`; it is installed as a Python dependency.
 
@@ -13,7 +13,7 @@ The memory core is not vendored inside `claude-imprint`; it is installed as a Py
 
 ## System Overview
 
-Claude Imprint gives Claude persistent memory, cross-channel context, automation, and remote control tools. The system is built around a SQLite database owned by `imprint-memory`, with `claude-imprint` adding operational services around it.
+Claude Imprint gives Claude persistent memory, cross-channel context, automation, and remote control tools. The system is built around a SQLite database owned by `memo-clover`, with `claude-imprint` adding operational services around it.
 
 ```mermaid
 flowchart LR
@@ -34,8 +34,8 @@ flowchart LR
         AUTO["update_claude_md.py"]
     end
 
-    subgraph Core["imprint-memory"]
-        MCP["imprint-memory MCP<br/>stdio or HTTP :8000"]
+    subgraph Core["memo-clover"]
+        MCP["memo-clover MCP<br/>stdio or HTTP :8000"]
         MM["memory_manager.py"]
         DB["SQLite memory.db<br/>WAL + FTS5"]
         BANK["memory/bank/*.md"]
@@ -70,7 +70,7 @@ flowchart LR
 | Repository | Responsibility | Key paths |
 |---|---|---|
 | `claude-imprint` | Runs and coordinates the full system: dashboard, hooks, cron, heartbeat, Telegram utilities, systemd deployment. | `packages/imprint_dashboard/dashboard.py`, `hooks/`, `scripts/`, `packages/imprint_heartbeat/`, `packages/imprint_telegram/`, `packages/imprint_utils/`, `deploy/` |
-| `imprint-memory` | Owns persistent memory, database schema, MCP tools, unified search, context assembly, conversation search, task queue, and HTTP OAuth mode. | `imprint_memory/db.py`, `imprint_memory/memory_manager.py`, `imprint_memory/server.py`, `imprint_memory/conversation.py`, `imprint_memory/tasks.py`, `imprint_memory/bus.py` |
+| `memo-clover` | Owns persistent memory, database schema, MCP tools, unified search, context assembly, conversation search, task queue, and HTTP OAuth mode. | `memo_clover/db.py`, `memo_clover/memory_manager.py`, `memo_clover/server.py`, `memo_clover/conversation.py`, `memo_clover/tasks.py`, `memo_clover/bus.py` |
 
 ---
 
@@ -78,8 +78,8 @@ flowchart LR
 
 | Component | Process / entry point | Port | Purpose |
 |---|---|---:|---|
-| Memory MCP stdio | `imprint-memory` | n/a | Local Claude Code MCP server. |
-| Memory MCP HTTP | `imprint-memory --http` | `8000` | HTTP MCP endpoint for Claude.ai through Cloudflare Tunnel. |
+| Memory MCP stdio | `memo-clover` | n/a | Local Claude Code MCP server. |
+| Memory MCP HTTP | `memo-clover --http` | `8000` | HTTP MCP endpoint for Claude.ai through Cloudflare Tunnel. |
 | Dashboard | `python3 packages/imprint_dashboard/dashboard.py` | `3000` | Local control panel and memory browser/editor. |
 | Cloudflare Tunnel | `cloudflared tunnel run my-tunnel` | n/a | Exposes memory HTTP server to Claude.ai. |
 | Telegram Channel | `claude --permission-mode auto --channels plugin:telegram@claude-plugins-official` | n/a | Telegram chat channel through Claude Code plugin. |
@@ -97,9 +97,9 @@ The memory core uses `IMPRINT_DATA_DIR` as its base directory. If unset, it defa
 
 | Path | Owner | Purpose |
 |---|---|---|
-| `$IMPRINT_DATA_DIR/memory.db` | `imprint-memory` | SQLite database for memories, conversations, tasks, bus, summaries, and indexes. |
-| `$IMPRINT_DATA_DIR/MEMORY.md` | `imprint-memory` | Auto-generated memory index. |
-| `$IMPRINT_DATA_DIR/memory/YYYY-MM-DD.md` | `imprint-memory` / hooks | Daily logs. |
+| `$IMPRINT_DATA_DIR/memory.db` | `memo-clover` | SQLite database for memories, conversations, tasks, bus, summaries, and indexes. |
+| `$IMPRINT_DATA_DIR/MEMORY.md` | `memo-clover` | Auto-generated memory index. |
+| `$IMPRINT_DATA_DIR/memory/YYYY-MM-DD.md` | `memo-clover` / hooks | Daily logs. |
 | `$IMPRINT_DATA_DIR/memory/bank/*.md` | user + Claude | Long-form knowledge bank files indexed into `bank_chunks`. |
 | `$IMPRINT_DATA_DIR/recent_context.md` or project `recent_context.md` | hooks | Recent cross-channel context generated from `conversation_log`. |
 | `$IMPRINT_DATA_DIR/CLAUDE.md` | user | Relationship snapshot consumed by `build_context()`. |
@@ -112,7 +112,7 @@ Note: some scripts deliberately set `IMPRINT_DATA_DIR` to the project directory,
 
 ## Core Memory Architecture
 
-The memory core centers on `imprint_memory.memory_manager`.
+The memory core centers on `memo_clover.memory_manager`.
 
 ```mermaid
 flowchart TD
@@ -153,7 +153,7 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant Claude
-    participant MCP as imprint-memory MCP
+    participant MCP as memo-clover MCP
     participant MM as memory_manager.remember
     participant Emb as Embedding Provider
     participant DB as SQLite
@@ -295,7 +295,7 @@ Context layers:
 
 ## Database Model
 
-`imprint_memory.db` owns schema initialization and migrations. It creates tables idempotently and enables WAL mode.
+`memo_clover.db` owns schema initialization and migrations. It creates tables idempotently and enables WAL mode.
 
 ```mermaid
 erDiagram
@@ -422,9 +422,9 @@ Other tables:
 
 ## MCP Tool Surface
 
-### imprint-memory
+### memo-clover
 
-The main MCP server is `imprint_memory.server`.
+The main MCP server is `memo_clover.server`.
 
 | Group | Tools |
 |---|---|
@@ -470,7 +470,7 @@ flowchart TD
     API["FastAPI routes<br/>dashboard.py"]
     PROC["Process controls<br/>start/stop/logs"]
     DBREAD["SQLite reads/writes"]
-    MEMAPI["imprint_memory.memory_manager"]
+    MEMAPI["memo_clover.memory_manager"]
 
     UI --> API
     API --> PROC
@@ -560,7 +560,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    START["./start.sh"] --> MEM["imprint-memory --http"]
+    START["./start.sh"] --> MEM["memo-clover --http"]
     START --> TUN["cloudflared tunnel run my-tunnel"]
     START --> TG["Claude Telegram channel"]
     START --> HEART["Heartbeat agent"]
@@ -573,7 +573,7 @@ Systemd templates live under `deploy/`:
 
 | Unit | Starts |
 |---|---|
-| `imprint-memory@.service` | `imprint-memory --http` |
+| `memo-clover@.service` | `memo-clover --http` |
 | `imprint-dashboard@.service` | Dashboard FastAPI app |
 | `imprint-heartbeat@.service` | Heartbeat agent |
 | `imprint-telegram@.service` | Telegram channel |
@@ -588,19 +588,19 @@ The services set `IMPRINT_DATA_DIR=/home/%i/.imprint` by default.
 | Variable | Used by | Meaning |
 |---|---|---|
 | `IMPRINT_DATA_DIR` | both repos | Base data directory. |
-| `IMPRINT_DB` | `imprint-memory` | Override SQLite DB path. |
+| `IMPRINT_DB` | `memo-clover` | Override SQLite DB path. |
 | `TZ_OFFSET` | both repos | Integer hour offset from UTC. |
-| `EMBED_PROVIDER` | `imprint-memory` | `ollama` or `openai`. |
-| `EMBED_MODEL` | `imprint-memory` | Embedding model name. |
-| `OLLAMA_URL` | `imprint-memory`, hooks | Ollama endpoint. |
-| `OPENAI_API_KEY` | `imprint-memory` | API key for OpenAI-compatible embeddings. |
-| `EMBED_API_BASE` | `imprint-memory` | OpenAI-compatible base URL. |
-| `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` / `OAUTH_ACCESS_TOKEN` | `imprint-memory --http` | OAuth credentials for HTTP MCP. |
+| `EMBED_PROVIDER` | `memo-clover` | `ollama` or `openai`. |
+| `EMBED_MODEL` | `memo-clover` | Embedding model name. |
+| `OLLAMA_URL` | `memo-clover`, hooks | Ollama endpoint. |
+| `OPENAI_API_KEY` | `memo-clover` | API key for OpenAI-compatible embeddings. |
+| `EMBED_API_BASE` | `memo-clover` | OpenAI-compatible base URL. |
+| `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` / `OAUTH_ACCESS_TOKEN` | `memo-clover --http` | OAuth credentials for HTTP MCP. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram MCP, heartbeat | Telegram Bot API credentials. |
 | `HEARTBEAT_INTERVAL` | heartbeat | Heartbeat interval in seconds. |
 | `QUIET_START` / `QUIET_END` | heartbeat | Quiet-hour notification window. |
-| `IMPRINT_LOCALE` | `imprint-memory` | Search result labels, `en` or `zh`. |
-| `IMPRINT_BANK_EXCLUDE` | `imprint-memory` | Comma-separated bank markdown files to skip. |
+| `IMPRINT_LOCALE` | `memo-clover` | Search result labels, `en` or `zh`. |
+| `IMPRINT_BANK_EXCLUDE` | `memo-clover` | Comma-separated bank markdown files to skip. |
 | `COMPRESS_MODEL` | hooks | Ollama model for per-message/context summarization. |
 
 ---
@@ -611,8 +611,8 @@ These are intentional observations about the current code, not requested future 
 
 | Area | Current state |
 |---|---|
-| Memory core location | `imprint-memory` is external to `claude-imprint` and installed from Git. |
-| Historical names | Some older docs mention `memory_mcp.py`; current executable is `imprint-memory`. |
+| Memory core location | `memo-clover` is external to `claude-imprint` and installed from Git. |
+| Historical names | Some older docs mention `memory_mcp.py`; current executable is `memo-clover`. |
 | Context builder | No separate `context_builder.py`; context is built in `memory_manager.build_context()`. |
 | Docker | PRD/Roadmap mention Docker Compose, but the current main repo does not include `docker-compose.yml`. |
 | Field naming | PRD mentions `activation_count` and `last_active`; current DB uses `recalled_count` and `last_accessed_at`. |

@@ -25,13 +25,13 @@ x-imprint-base: &imprint-base
 services:
   memory-http:
     <<: *imprint-base
-    container_name: claude-imprint-memory-http
+    container_name: claude-memo-clover-http
     command: >
       sh -lc "apt-get update
       && apt-get install -y --no-install-recommends git
       && rm -rf /var/lib/apt/lists/*
       && python -m pip install --no-cache-dir -r requirements.txt
-      && imprint-memory --http"
+      && memo-clover --http"
     ports:
       - "${MEMORY_HTTP_PORT:-8000}:8000"
     healthcheck:

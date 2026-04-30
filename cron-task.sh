@@ -1,11 +1,11 @@
 #!/bin/bash
 # ─── Imprint Cron Task Runner ───
-# Runs a claude CLI task with imprint-memory MCP only (no channel plugins).
+# Runs a claude CLI task with memo-clover MCP only (no channel plugins).
 # Usage: cron-task.sh <task-name> <prompt-file>
 #
 # Design decisions:
 #   - Runs from $HOME to avoid loading project-level .mcp.json
-#   - Uses cron-mcp.json with only imprint-memory
+#   - Uses cron-mcp.json with only memo-clover
 #   - Captures AI output; if telegram was sent, appends to recent_context.md
 #   - --max-budget-usd caps cost; CLI exits naturally after completion
 
