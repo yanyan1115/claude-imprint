@@ -575,6 +575,63 @@ sudo systemctl restart imprint-memory@$USER imprint-dashboard@$USER
 
 同时确认没有两套服务分别写不同目录中的数据库，或同一数据库被旧进程长期占用。
 
+### Retrieval Evaluation / Tuning Runbook
+
+检索调参必须先跑固定评估夹具，再调整参数。当前夹具位于核心包仓库：
+
+```powershell
+cd D:\APP\imprint-memory
+python -m pytest tests/test_retrieval_eval.py -q
+```
+
+完整核心包回归：
+
+```powershell
+cd D:\APP\imprint-memory
+python -m pytest -q
+```
+
+主框架集成回归需要指向本地核心包：
+
+```powershell
+cd D:\APP\claude-imprint\claude-imprint
+$env:PYTHONPATH='D:\APP\imprint-memory'
+python -m pytest -q
+```
+
+当前 evaluation fixtures 锁定的行为：
+
+- 中英混合精确命中优先：`SQLite FTS5 检索` 不应被弱语义噪声压过。
+- 低相似度向量会在进入 RRF 前被 `VEC_PRE_FILTER` 拦截。
+- 没有 FTS 命中但向量相似度足够高时，vector-only memory 可以浮现。
+- Bank pool 能稳定返回 Markdown chunk。
+- Conversation pool 能稳定返回 `conversation_log` 命中。
+
+调参顺序：
+
+1. 先新增或更新 evaluation fixture，描述要保护的查询和预期排序。
+2. 跑 `tests/test_retrieval_eval.py`，确认当前基线是否真的暴露问题。
+3. 只改一个参数或一个 rerank 因素。
+4. 同时跑核心包全量测试和主框架集成测试。
+5. 如果排序变化合理，再把调参原因记录到 PR/提交说明或本 runbook。
+
+主要参数和风险：
+
+| 参数 | 当前值 | 作用 | 调整风险 |
+|---|---:|---|---|
+| `VEC_PRE_FILTER` | `0.3` | memory / bank 向量候选进入 RRF 前的最低相似度。 | 调低会让弱相关向量污染排序；调高会漏掉只有语义相关、没有关键词命中的结果。 |
+| `RRF_K` | `60` | Reciprocal Rank Fusion 的平滑常量。 | 调小会放大头部名次差异；调大会让多通道弱命中更接近，排序变化不直观。 |
+| `MIN_FINAL_SCORE` | `0.003` | rerank 后的最低保留分。 | 调高可能误删单通道好结果；调低会放进更多噪声。 |
+| `RERANK_BLEND` | `0.3` | time / activation / importance / emotion 对 RRF 分数的影响比例。 | 调高会让业务权重压过相关性；调低会削弱时效和情绪浮现。 |
+| `LIKE_LIMIT` | `50` | 每个 pool 的 LIKE 兜底候选数量。 | 调高会增加成本和噪声；调低可能漏掉精确 substring 兜底。 |
+
+经验原则：
+
+- 精确关键词和 FTS 命中应优先保护。
+- vector-only 结果必须通过明确相似度门槛。
+- 情绪和时间 rerank 是二级排序因素，不应压过明显更相关内容。
+- bank 和 conversation 的 pool 覆盖要单独验证，避免只看 memory pool。
+
 ---
 
 ## 服务器更新流程参考
