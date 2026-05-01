@@ -736,7 +736,17 @@ def _fetch_memories(q="", limit=20, max_limit=100):
 @app.get("/api/memories")
 async def api_memories(q: str = "", limit: int = 20):
     """Search or list memories"""
-    return {"memories": _fetch_memories(q=q, limit=limit)}
+    status = get_search_status()
+    search_mode = "vector" if status.get("mode") == "vector" and not status.get("fallback") else "fts5_fallback"
+    return {
+        "memories": _fetch_memories(q=q, limit=limit),
+        "meta": {
+            "search_mode": search_mode,
+            "provider": status.get("provider", ""),
+            "model": status.get("model", ""),
+            "reason": status.get("reason", ""),
+        },
+    }
 
 
 @app.get("/api/decay-status")

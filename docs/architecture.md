@@ -242,10 +242,14 @@ Long natural-language queries are preprocessed before they reach FTS5:
 | Tokenize and normalize | Extract useful English/CJK tokens from long prompts. |
 | Stopword filtering and de-duplication | Remove low-signal words such as "please", "what", "这个", "那些". |
 | Token truncation | Keep a bounded number of high-signal tokens so long prompts do not become overly strict MATCH expressions. |
-| FTS expression selection | Short queries stay precise; long queries use token-level `OR` recall. |
+| FTS expression selection | Multi-token queries use token-level `OR` recall so `A B C` can match rows containing any useful term. |
 | LIKE fallback scoring | LIKE no longer requires the whole query string; candidates are ranked by matched keyword coverage. |
 
 The full original query is still passed to the vector provider when vectors are available. Only the text-recall channels receive the tokenized/truncated form.
+
+Search results now carry a per-result `search_mode` field: `"vector"` when an embedding vector was available for the query, and `"fts5_fallback"` when MemoClover had to rely on FTS5/LIKE text recall. The Dashboard also returns this state in `/api/memories` response metadata and exposes a live provider probe through `/api/search-status`.
+
+Current local diagnostic note: in the Windows development environment used for the May 1, 2026 search fix, no embedding-related environment variables were set, so MemoClover defaulted to `EMBED_PROVIDER=ollama`, `EMBED_MODEL=bge-m3`, and `OLLAMA_URL=http://localhost:11434`. The Ollama `/api/embed` endpoint was unreachable, so vector recall was not active; this was a provider availability issue, not an OpenAI API key failure or SQLite/vector table connection failure. The code logs explicit `[VectorSearch] Failed: ... Falling back to FTS5...` warnings for this path.
 
 ---
 
