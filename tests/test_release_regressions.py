@@ -190,6 +190,12 @@ class ReindexDocumentationTests(unittest.TestCase):
 
 
 class DashboardSummaryApiTests(unittest.TestCase):
+    def tearDown(self):
+        from packages.imprint_dashboard import dashboard
+
+        dashboard._SEARCH_STATUS_CACHE["checked_at"] = 0.0
+        dashboard._SEARCH_STATUS_CACHE["data"] = None
+
     def test_summary_put_invalid_json_returns_400(self):
         from packages.imprint_dashboard import dashboard
 
@@ -213,6 +219,48 @@ class DashboardSummaryApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("JSON body must be an object", response.body.decode("utf-8"))
+
+    def test_search_status_reports_text_only_when_provider_fails(self):
+        from packages.imprint_dashboard import dashboard
+
+        with mock.patch.object(dashboard.mem, "EMBED_PROVIDER", "ollama"), \
+                mock.patch.object(dashboard.mem, "EMBED_MODEL", "bge-m3"), \
+                mock.patch.object(
+                    dashboard,
+                    "_probe_ollama_search_status",
+                    return_value=dashboard._search_status_payload(
+                        mode="text_only",
+                        fallback=True,
+                        provider="ollama",
+                        model="bge-m3",
+                        endpoint="http://localhost:11434",
+                        reason="connection refused",
+                    ),
+                ):
+            data = dashboard.get_search_status(force=True)
+
+        self.assertEqual(data["mode"], "text_only")
+        self.assertTrue(data["fallback"])
+        self.assertEqual(data["provider"], "ollama")
+        self.assertIn("Fallback", data["message"])
+
+    def test_search_status_endpoint_returns_vector_mode(self):
+        from packages.imprint_dashboard import dashboard
+
+        payload = dashboard._search_status_payload(
+            mode="vector",
+            fallback=False,
+            provider="ollama",
+            model="bge-m3",
+            endpoint="http://localhost:11434",
+        )
+
+        with mock.patch.object(dashboard, "get_search_status", return_value=payload):
+            data = asyncio.run(dashboard.api_search_status())
+
+        self.assertEqual(data["mode"], "vector")
+        self.assertFalse(data["fallback"])
+        self.assertEqual(data["message"], "Vector Search")
 
 
 if __name__ == "__main__":

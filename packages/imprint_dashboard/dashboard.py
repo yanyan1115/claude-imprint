@@ -11,6 +11,8 @@ import signal
 import json
 import shutil
 import sqlite3
+import time
+import urllib.request
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -26,6 +28,9 @@ DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(Path.home() / ".imprint")
 TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
 LOGS = BASE / "logs"
 LOGS.mkdir(exist_ok=True)
+SEARCH_STATUS_TTL_SECONDS = 30
+SEARCH_STATUS_TIMEOUT_SECONDS = 3
+_SEARCH_STATUS_CACHE = {"checked_at": 0.0, "data": None}
 
 # ─── Components ──────────────────────────────────────────
 
@@ -205,6 +210,157 @@ def get_memory_stats():
         return {"count": 0, "today_logs": 0}
 
 
+def _search_status_payload(
+    *,
+    mode,
+    fallback,
+    provider,
+    model,
+    reason="",
+    endpoint="",
+):
+    message = "Vector Search" if mode == "vector" else "Text-only (Fallback)"
+    tooltip = (
+        "Vector engine is responding; semantic retrieval is available."
+        if mode == "vector"
+        else "Vector engine is not responding; current searches use text-only retrieval."
+    )
+    return {
+        "mode": mode,
+        "fallback": fallback,
+        "provider": provider,
+        "model": model,
+        "endpoint": endpoint,
+        "message": message,
+        "reason": reason,
+        "tooltip": tooltip,
+        "checked_at": int(time.time()),
+    }
+
+
+def _probe_ollama_search_status(provider, model):
+    endpoint = getattr(mem, "OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://localhost:11434"))
+    try:
+        payload = json.dumps({"model": model, "input": "dashboard search status"}).encode()
+        req = urllib.request.Request(
+            f"{endpoint.rstrip('/')}/api/embed",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=SEARCH_STATUS_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read())
+        embeddings = data.get("embeddings", [])
+        if embeddings and embeddings[0]:
+            return _search_status_payload(
+                mode="vector",
+                fallback=False,
+                provider=provider,
+                model=model,
+                endpoint=endpoint,
+            )
+        return _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            reason="Ollama returned an empty embedding payload",
+        )
+    except Exception as exc:
+        return _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            reason=str(exc),
+        )
+
+
+def _probe_openai_search_status(provider, model):
+    api_key = getattr(mem, "OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+    base = getattr(mem, "EMBED_API_BASE", os.environ.get("EMBED_API_BASE", "https://api.openai.com"))
+    endpoint = f"{base.rstrip('/')}/v1/embeddings"
+    if not api_key:
+        return _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            reason="OPENAI_API_KEY is not configured",
+        )
+
+    try:
+        payload = json.dumps({"model": model, "input": "dashboard search status"}).encode()
+        req = urllib.request.Request(
+            endpoint,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=SEARCH_STATUS_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read())
+        items = data.get("data", [])
+        if items and items[0].get("embedding"):
+            return _search_status_payload(
+                mode="vector",
+                fallback=False,
+                provider=provider,
+                model=model,
+                endpoint=endpoint,
+            )
+        return _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            reason="Embedding API returned an empty payload",
+        )
+    except Exception as exc:
+        return _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+            reason=str(exc),
+        )
+
+
+def get_search_status(force=False):
+    """Return current retrieval mode with a short TTL to avoid noisy probes."""
+    now = time.time()
+    cached = _SEARCH_STATUS_CACHE.get("data")
+    if cached and not force and now - _SEARCH_STATUS_CACHE.get("checked_at", 0.0) < SEARCH_STATUS_TTL_SECONDS:
+        return cached
+
+    provider = getattr(mem, "EMBED_PROVIDER", os.environ.get("EMBED_PROVIDER", "ollama"))
+    model = getattr(mem, "EMBED_MODEL", os.environ.get("EMBED_MODEL", "bge-m3"))
+    provider = (provider or "ollama").strip().lower()
+    model = (model or "bge-m3").strip()
+
+    if provider == "ollama":
+        status = _probe_ollama_search_status(provider, model)
+    elif provider == "openai":
+        status = _probe_openai_search_status(provider, model)
+    else:
+        status = _search_status_payload(
+            mode="text_only",
+            fallback=True,
+            provider=provider,
+            model=model,
+            reason=f"Unknown embedding provider: {provider}",
+        )
+
+    _SEARCH_STATUS_CACHE["checked_at"] = now
+    _SEARCH_STATUS_CACHE["data"] = status
+    return status
+
+
 def get_scheduled_tasks():
     """Read scheduled tasks directory"""
     tasks_dir = Path.home() / ".claude" / "scheduled-tasks"
@@ -313,6 +469,11 @@ async def api_status():
         "memory": memory,
         "tasks": tasks,
     }
+
+
+@app.get("/api/search-status")
+async def api_search_status(force: bool = False):
+    return get_search_status(force=force)
 
 
 @app.post("/api/{component}/start")
@@ -1176,6 +1337,57 @@ async def dashboard():
     margin-bottom: 12px;
   }
   .search-box:focus { outline: none; border-color: #B96748; }
+  .memory-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .memory-title-row h2 {
+    margin-bottom: 0;
+  }
+  .search-mode-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 26px;
+    padding: 4px 9px;
+    border: 1px solid #E8E6DC;
+    border-radius: 7px;
+    background: #FAF9F5;
+    color: #6B6962;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .search-mode-pill::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #B0AEA5;
+  }
+  .search-mode-pill.vector {
+    border-color: #9AC89A;
+    color: #2B8A3E;
+    background: #F4FBF3;
+  }
+  .search-mode-pill.vector::before {
+    background: #2B8A3E;
+    box-shadow: 0 0 8px rgba(43,138,62,0.35);
+  }
+  .search-mode-pill.fallback {
+    border-color: #F4C46A;
+    color: #9A5A00;
+    background: #FFF7E8;
+  }
+  .search-mode-pill.fallback::before {
+    background: #F59E0B;
+    box-shadow: 0 0 8px rgba(245,158,11,0.35);
+  }
+  .search-mode-pill.unknown::before {
+    background: #B0AEA5;
+  }
   .memory-item {
     padding: 10px 0;
     border-bottom: 1px solid #E8E6DC;
@@ -1816,7 +2028,10 @@ async def dashboard():
 </div>
 
 <div class="memory-section" id="memory-section">
-  <h2>Memory</h2>
+  <div class="memory-title-row">
+    <h2>Memory</h2>
+    <span class="search-mode-pill unknown" id="search-mode" title="Checking retrieval mode...">Checking...</span>
+  </div>
   <div class="decay-stat-row" id="decay-status">Loading...</div>
   <input class="search-box" type="text" placeholder="Search memories..." id="memory-search" oninput="searchMemories()">
   <div id="memory-list" style="max-height:500px;overflow-y:auto;"></div>
@@ -1922,6 +2137,12 @@ const i18n = {
     turns: 'turns',
     memoryTitle: 'Memory',
     searchPlaceholder: 'Search memories...',
+    searchModeChecking: 'Checking...',
+    searchModeVector: 'Vector Search',
+    searchModeFallback: 'Text-only (Fallback)',
+    searchModeUnknown: 'Search status unavailable',
+    searchModeVectorTip: 'Vector engine is responding; semantic retrieval is available.',
+    searchModeFallbackTip: 'Vector engine is not responding; current searches use text-only retrieval.',
     noMemories: 'No memories yet',
     edit: 'Edit', delete: 'Delete', cancel: 'Cancel', save: 'Save',
     editMemory: 'Edit Memory',
@@ -1980,6 +2201,12 @@ const i18n = {
     turns: 'turns',
     memoryTitle: '记忆库',
     searchPlaceholder: '搜索记忆...',
+    searchModeChecking: '检测中...',
+    searchModeVector: '向量检索',
+    searchModeFallback: '纯文本检索（降级）',
+    searchModeUnknown: '检索状态不可用',
+    searchModeVectorTip: '向量引擎响应正常，语义检索可用。',
+    searchModeFallbackTip: '向量引擎未响应，当前使用纯文本检索。',
     noMemories: '暂无记忆',
     edit: '编辑', delete: '删除', cancel: '取消', save: '保存',
     editMemory: '编辑记忆',
@@ -2039,9 +2266,8 @@ function applyStaticI18n() {
   if (summariesSub) summariesSub.textContent = t('summariesSub');
   const summarySearch = document.getElementById('summary-search');
   if (summarySearch) summarySearch.placeholder = t('summarySearchPlaceholder');
-  const memSections = document.querySelectorAll('.memory-section h2');
-  if (memSections.length >= 3) memSections[memSections.length - 1].textContent = t('memoryTitle');
-  else if (memSections.length >= 1) memSections[memSections.length - 1].textContent = t('memoryTitle');
+  const memTitle = document.querySelector('#memory-section .memory-title-row h2');
+  if (memTitle) memTitle.textContent = t('memoryTitle');
   document.getElementById('memory-search').placeholder = t('searchPlaceholder');
   document.querySelector('.modal h3').textContent = t('editMemory');
   const summaryModalTitle = document.querySelector('#summary-edit-modal h3');
@@ -2088,6 +2314,7 @@ function refreshAll() {
   fetchStatus();
   fetchHeatmap();
   fetchSystemStatus();
+  fetchSearchStatus();
   fetchFragment();
   fetchStreamStats();
   fetchSummaries();
@@ -2441,6 +2668,28 @@ async function fetchSystemStatus() {
       document.getElementById('ns-heartbeat').textContent = '-';
     }
   } catch(e) { console.error(e); }
+}
+
+async function fetchSearchStatus() {
+  const el = document.getElementById('search-mode');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/search-status');
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'search status fetch failed');
+    const isVector = data.mode === 'vector' && !data.fallback;
+    el.className = 'search-mode-pill ' + (isVector ? 'vector' : 'fallback');
+    el.textContent = isVector ? t('searchModeVector') : t('searchModeFallback');
+    const baseTip = isVector ? t('searchModeVectorTip') : t('searchModeFallbackTip');
+    const detail = [data.provider, data.model].filter(Boolean).join(' · ');
+    const reason = data.reason ? ' · ' + data.reason : '';
+    el.title = baseTip + (detail ? ' · ' + detail : '') + reason;
+  } catch(e) {
+    el.className = 'search-mode-pill unknown';
+    el.textContent = t('searchModeUnknown');
+    el.title = t('searchModeFallbackTip');
+    console.error('search status error:', e);
+  }
 }
 
 async function fetchFragment() {
@@ -2812,6 +3061,7 @@ applyStaticI18n();
 fetchStatus();
 fetchHeatmap();
 fetchSystemStatus();
+fetchSearchStatus();
 fetchFragment();
 fetchStreamStats();
 fetchSummaries();
@@ -2822,6 +3072,7 @@ fetchRemoteTools();
 fetchLiveFiles();
 setInterval(fetchStatus, 3000);
 setInterval(fetchSystemStatus, 10000);
+setInterval(fetchSearchStatus, 30000);
 setInterval(fetchStreamStats, 10000);
 setInterval(fetchSummaries, 10000);
 setInterval(fetchShortTermMemory, 5000);
