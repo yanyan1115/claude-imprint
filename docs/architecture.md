@@ -224,6 +224,29 @@ The current implementation uses:
 
 The newer unified search path uses RRF plus per-pool reranking rather than the older simple weighted formula.
 
+### Vector Fallback And Long Query Handling
+
+MemoClover search is designed as a dual-recall system:
+
+1. **Vector semantic recall** uses the configured embedding provider, typically Ollama with `bge-m3`.
+2. **Text recall** uses FTS5 plus bounded LIKE fallback channels across memories, bank chunks, and conversation logs.
+
+Embedding provider failures are intentionally non-fatal. If Ollama, `bge-m3`, or an OpenAI-compatible provider is unavailable, `_embed()` returns `None` after logging a warning with provider, model, endpoint, and exception context. The search pipeline then skips vector channels and continues in text-only mode. This keeps `memory_search` available while making the degradation observable in logs and in the Dashboard search-mode indicator.
+
+Long natural-language queries are preprocessed before they reach FTS5:
+
+| Step | Purpose |
+|---|---|
+| Sanitize FTS operators and punctuation | Prevent MATCH parse errors and accidental boolean/operator interpretation. |
+| Segment CJK text | Use `jieba.cut_for_search()` when available; otherwise fall back to CJK character spacing. |
+| Tokenize and normalize | Extract useful English/CJK tokens from long prompts. |
+| Stopword filtering and de-duplication | Remove low-signal words such as "please", "what", "这个", "那些". |
+| Token truncation | Keep a bounded number of high-signal tokens so long prompts do not become overly strict MATCH expressions. |
+| FTS expression selection | Short queries stay precise; long queries use token-level `OR` recall. |
+| LIKE fallback scoring | LIKE no longer requires the whole query string; candidates are ranked by matched keyword coverage. |
+
+The full original query is still passed to the vector provider when vectors are available. Only the text-recall channels receive the tokenized/truncated form.
+
 ---
 
 ## Emotional Decay And Surfacing
@@ -484,6 +507,7 @@ flowchart TD
 |---|---|---|
 | `GET` | `/` | Render the full dashboard page. |
 | `GET` | `/api/status` | Service status, tunnel status, memory stats, scheduled tasks. |
+| `GET` | `/api/search-status` | Current retrieval mode: vector search or text-only fallback. |
 | `POST` | `/api/{component}/start` | Start a configured component. |
 | `POST` | `/api/{component}/stop` | Stop a configured component. |
 | `GET` | `/api/logs/{component}` | Tail service logs. |
@@ -516,6 +540,7 @@ flowchart TD
 | Remote Tool Log | `cc_tasks`. |
 | Summaries | `summaries`. |
 | Memory | `memories`, `memory_manager.update_memory/delete_memory`, dynamic column detection. |
+| Search mode indicator | `/api/search-status`, MemoClover embedding provider config. |
 | Live Files | `CLAUDE.md`, `recent_context.md`, `MEMORY.md`, daily logs, bank files. |
 | Todos | Markdown files under `memory/bank`. |
 
