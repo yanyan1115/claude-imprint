@@ -210,11 +210,28 @@ See the complete template in [.env.example](.env.example).
 | `IMPRINT_DATA_DIR` | Unified data directory. All services must use the same value. |
 | `IMPRINT_DB` | Optional SQLite path. Defaults to `$IMPRINT_DATA_DIR/memory.db`. |
 | `TZ_OFFSET` | Timezone offset in hours. |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM configuration. |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM configuration; use `LLM_BASE_URL=https://api.deepseek.com` and `LLM_MODEL=deepseek-v4-flash` for DeepSeek V4 Flash. |
+| `EMBED_PROVIDER` / `EMBED_API_BASE` / `EMBED_MODEL` | MemoClover vector retrieval configuration; set `EMBED_PROVIDER=openai`, `EMBED_API_BASE=https://api.deepseek.com`, and `EMBED_MODEL=deepseek-v4-flash` for a DeepSeek-compatible endpoint. |
+| `EMBED_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | API key for OpenAI-compatible embedding providers. `EMBED_API_KEY` is preferred; the others are compatibility aliases. |
 | `OLLAMA_URL` | Local Ollama endpoint. |
 | `DECAY_LAMBDA` / `DECAY_THRESHOLD` | Emotional decay parameters. |
 | `AROUSAL_SURFACING_THRESHOLD` | Proactive resurfacing threshold. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram Bot API sending configuration. |
+
+DeepSeek V4 Flash example:
+
+```bash
+export LLM_BASE_URL=https://api.deepseek.com
+export LLM_API_KEY=sk-...
+export LLM_MODEL=deepseek-v4-flash
+
+export EMBED_PROVIDER=openai
+export EMBED_API_BASE=https://api.deepseek.com
+export EMBED_API_KEY=sk-...
+export EMBED_MODEL=deepseek-v4-flash
+```
+
+The Dashboard memory panel now supports paginated loading and clickable status chips. Click a chip such as `protected`, `low score`, or `decaying` to filter the list; click it again or click `total` to return to all memories.
 
 ## Documentation
 
@@ -493,11 +510,28 @@ claude --permission-mode auto --channels plugin:telegram@claude-plugins-official
 | `IMPRINT_DATA_DIR` | 统一数据目录，所有服务必须一致。 |
 | `IMPRINT_DB` | 可选 SQLite 路径，默认 `$IMPRINT_DATA_DIR/memory.db`。 |
 | `TZ_OFFSET` | 时区偏移小时数。 |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM 配置。 |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | OpenAI-compatible LLM 配置；DeepSeek V4 Flash 使用 `LLM_BASE_URL=https://api.deepseek.com` 和 `LLM_MODEL=deepseek-v4-flash`。 |
+| `EMBED_PROVIDER` / `EMBED_API_BASE` / `EMBED_MODEL` | MemoClover 向量检索配置；DeepSeek-compatible endpoint 使用 `EMBED_PROVIDER=openai`、`EMBED_API_BASE=https://api.deepseek.com`、`EMBED_MODEL=deepseek-v4-flash`。 |
+| `EMBED_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | OpenAI-compatible embedding provider 的 API key。优先使用 `EMBED_API_KEY`，其余为兼容别名。 |
 | `OLLAMA_URL` | 本地 Ollama 地址。 |
 | `DECAY_LAMBDA` / `DECAY_THRESHOLD` | 情感衰减参数。 |
 | `AROUSAL_SURFACING_THRESHOLD` | 主动浮现阈值。 |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram Bot API 发送配置。 |
+
+DeepSeek V4 Flash 示例：
+
+```bash
+export LLM_BASE_URL=https://api.deepseek.com
+export LLM_API_KEY=sk-...
+export LLM_MODEL=deepseek-v4-flash
+
+export EMBED_PROVIDER=openai
+export EMBED_API_BASE=https://api.deepseek.com
+export EMBED_API_KEY=sk-...
+export EMBED_MODEL=deepseek-v4-flash
+```
+
+Dashboard 记忆面板现在支持分页加载和可点击状态标签。点击 `已保护`、`低分`、`衰减中` 等标签会过滤列表并高亮当前视图；再次点击当前标签或点击 `总数` 会恢复显示全部。
 
 ## 文档入口
 

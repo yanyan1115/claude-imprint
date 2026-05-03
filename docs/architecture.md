@@ -249,6 +249,17 @@ The full original query is still passed to the vector provider when vectors are 
 
 Search results now carry a per-result `search_mode` field: `"vector"` when an embedding vector was available for the query, and `"fts5_fallback"` when MemoClover had to rely on FTS5/LIKE text recall. The Dashboard also returns this state in `/api/memories` response metadata and exposes a live provider probe through `/api/search-status`.
 
+DeepSeek V4 Flash is configured through the OpenAI-compatible path:
+
+```bash
+EMBED_PROVIDER=openai
+EMBED_API_BASE=https://api.deepseek.com
+EMBED_API_KEY=sk-...
+EMBED_MODEL=deepseek-v4-flash
+```
+
+`EMBED_API_KEY` is preferred for provider-neutral deployments. `DEEPSEEK_API_KEY` and `OPENAI_API_KEY` remain accepted aliases. If the provider times out, returns an empty payload, or is missing a key, MemoClover logs the provider/model/endpoint details and continues with FTS5/LIKE text recall.
+
 Current local diagnostic note: in the Windows development environment used for the May 1, 2026 search fix, no embedding-related environment variables were set, so MemoClover defaulted to `EMBED_PROVIDER=ollama`, `EMBED_MODEL=bge-m3`, and `OLLAMA_URL=http://localhost:11434`. The Ollama `/api/embed` endpoint was unreachable, so vector recall was not active; this was a provider availability issue, not an OpenAI API key failure or SQLite/vector table connection failure. The code logs explicit `[VectorSearch] Failed: ... Falling back to FTS5...` warnings for this path.
 
 ---
@@ -516,7 +527,7 @@ flowchart TD
 | `POST` | `/api/{component}/stop` | Stop a configured component. |
 | `GET` | `/api/logs/{component}` | Tail service logs. |
 | `GET` | `/api/heatmap` | Interaction heatmap data. |
-| `GET` | `/api/memories` | Search/list memories with Phase 2/3 metadata. |
+| `GET` | `/api/memories` | Search/list memories with Phase 2/3 metadata. Supports `page`, `limit`, and `status` filters. |
 | `PUT` | `/api/memories/{memory_id}` | Update memory content/category/importance and emotional metadata. |
 | `DELETE` | `/api/memories/{memory_id}` | Delete a memory through `memory_manager.delete_memory()`. |
 | `GET` | `/api/decay-status` | Dashboard-level decay counters. |
@@ -532,6 +543,8 @@ flowchart TD
 | `GET` | `/api/todos/system` | Read system todo file. |
 | `GET` | `/api/todos/backlog` | Read backlog file. |
 | `PUT` | `/api/todos/backlog` | Save backlog file. |
+
+The memory panel consumes `/api/memories?page=1&limit=50&status=<key>` for paginated list loading. Status chips (`protected`, `low_score`, `decaying`, and related decay counters) are interactive: selecting one refreshes the list with that filter and applies an active chip style; selecting it again or selecting `total` clears the filter.
 
 ### Dashboard Sections
 
@@ -622,8 +635,8 @@ The services set `IMPRINT_DATA_DIR=/home/%i/.imprint` by default.
 | `EMBED_PROVIDER` | `memo-clover` | `ollama` or `openai`. |
 | `EMBED_MODEL` | `memo-clover` | Embedding model name. |
 | `OLLAMA_URL` | `memo-clover`, hooks | Ollama endpoint. |
-| `OPENAI_API_KEY` | `memo-clover` | API key for OpenAI-compatible embeddings. |
-| `EMBED_API_BASE` | `memo-clover` | OpenAI-compatible base URL. |
+| `EMBED_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` | `memo-clover` | API key for OpenAI-compatible embeddings. `EMBED_API_KEY` takes precedence. |
+| `EMBED_API_BASE` / `EMBED_API_PATH` | `memo-clover` | OpenAI-compatible base URL and optional embeddings path override. DeepSeek V4 Flash uses `https://api.deepseek.com` with `EMBED_MODEL=deepseek-v4-flash`. |
 | `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` / `OAUTH_ACCESS_TOKEN` | `memo-clover --http` | OAuth credentials for HTTP MCP. |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram MCP, heartbeat | Telegram Bot API credentials. |
 | `HEARTBEAT_INTERVAL` | heartbeat | Heartbeat interval in seconds. |
