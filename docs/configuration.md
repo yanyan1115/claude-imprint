@@ -18,7 +18,7 @@
 | `./start.sh` | 继承当前 shell 环境变量 | `start.sh` 不读取 `.env`。需要先 `export ...` 再启动。 |
 | `./stop.sh` | 基本不依赖环境变量 | 通过 PID 文件和 `pkill` 停进程。 |
 | systemd | `deploy/*@.service` 中的 `Environment=...` | 修改 unit 后需要 `systemctl daemon-reload` 并重启服务。 |
-| Claude Code hooks | hook 脚本内部设置 | `hooks/post-response.sh` 和 `hooks/pre-compact-flush.sh` 会强制 `export IMPRINT_DATA_DIR="$SCRIPT_DIR"`。 |
+| Claude Code hooks | 继承当前 shell 环境变量，脚本内提供默认值 | `hooks/post-response.sh` 和 `hooks/pre-compact-flush.sh` 会保留外部 `IMPRINT_DATA_DIR`；未设置时默认 `$HOME/.imprint`。 |
 | `memo-clover --http` OAuth | `~/.imprint-oauth.json` 优先，其次环境变量 | 如果凭证文件存在，`OAUTH_*` 环境变量会被忽略。 |
 | cron runner | shell/PowerShell 环境，加 `~/.claude/cron-token` | 脚本会把 token 文件内容写入 `CLAUDE_CODE_OAUTH_TOKEN`。 |
 
@@ -91,12 +91,12 @@ sudo systemctl daemon-reload
 sudo systemctl restart memo-clover@$USER imprint-dashboard@$USER imprint-heartbeat@$USER
 ```
 
-### hooks 的特殊情况
+### hooks 的数据目录
 
-当前 hooks 不继承外部 `IMPRINT_DATA_DIR`，而是写死为项目根目录：
+当前 hooks 会优先继承外部 `IMPRINT_DATA_DIR`，未设置时默认写入当前用户 home 下的共享 imprint 目录：
 
 ```bash
-export IMPRINT_DATA_DIR="$SCRIPT_DIR"
+export IMPRINT_DATA_DIR="${IMPRINT_DATA_DIR:-$HOME/.imprint}"
 ```
 
 受影响文件：
@@ -107,16 +107,16 @@ export IMPRINT_DATA_DIR="$SCRIPT_DIR"
 这意味着 Claude Code hook 写入的数据库默认是：
 
 ```text
-<claude-imprint repo>/memory.db
+$HOME/.imprint/memory.db
 ```
 
-而 systemd 模板启动的服务默认读取：
+systemd 模板启动的服务默认也读取：
 
 ```text
 /home/<user>/.imprint/memory.db
 ```
 
-如果希望 hook、HTTP 服务、Dashboard 共用同一份数据库，需要把 hook 脚本中的该行改成同一个目标目录，或接受“项目内 hook 数据”和“服务数据目录”分离的现状。
+如果希望 hook、HTTP 服务、Dashboard 共用同一份自定义数据库，只需要在启动环境和 hook 环境里设置同一个 `IMPRINT_DATA_DIR`。不要只设置 `IMPRINT_DB`，因为 Dashboard 仍按 `$IMPRINT_DATA_DIR/memory.db` 读取。
 
 ---
 
@@ -126,7 +126,7 @@ export IMPRINT_DATA_DIR="$SCRIPT_DIR"
 
 | 变量 | 默认值 | 必填 | 使用位置 | 作用 |
 |---|---:|---|---|---|
-| `IMPRINT_DATA_DIR` | `~/.imprint` | 否 | `memo-clover`、Dashboard、Heartbeat、`update_claude_md.py`、hooks | 数据根目录。systemd 模板默认 `/home/%i/.imprint`，hooks 当前强制为项目根目录。 |
+| `IMPRINT_DATA_DIR` | `~/.imprint` | 否 | `memo-clover`、Dashboard、Heartbeat、`update_claude_md.py`、hooks | 数据根目录。systemd 模板默认 `/home/%i/.imprint`，hooks 未设置时默认 `$HOME/.imprint`。 |
 | `IMPRINT_DB` | `$IMPRINT_DATA_DIR/memory.db` | 否 | `memo-clover` 核心包 | 覆盖 SQLite 路径。full-stack 场景不建议单独设置。 |
 | `TZ_OFFSET` | `0` | 否 | `memo-clover`、Dashboard、Heartbeat、`update_claude_md.py` | 固定 UTC 小时偏移，例如 `8`、`-4`。代码不处理 IANA 时区或 DST。必须是整数，否则进程导入时会报错。 |
 
@@ -136,11 +136,34 @@ export IMPRINT_DATA_DIR="$SCRIPT_DIR"
 |---|---:|---|---|---|
 | `EMBED_PROVIDER` | `ollama` | 否 | `memo_clover/memory_manager.py` | embedding provider。只有值为 `openai` 时走 OpenAI-compatible API，其他值都会走 Ollama 分支。 |
 | `OLLAMA_URL` | `http://localhost:11434` | 否 | `memory_manager.py`、`compress.py`、`console.py`、`hooks/post_response_processor.py` | Ollama API 地址，用于本地 embedding 和摘要压缩。 |
-| `OPENAI_API_KEY` | 空字符串 | 仅 `EMBED_PROVIDER=openai` 时需要 | `memory_manager.py`、systemd memory 模板注释 | OpenAI-compatible embedding API 的 bearer token。未设置时 embedding 返回 `None`，检索退化到关键词/FTS 通道。 |
-| `EMBED_API_BASE` | `https://api.openai.com` | 否 | `memory_manager.py` | OpenAI-compatible API base，代码会请求 `{EMBED_API_BASE}/v1/embeddings`。 |
+| `EMBED_API_KEY` | 空字符串 | OpenAI-compatible embedding provider 需要 | `memory_manager.py`、Dashboard search status | 推荐使用的 provider-neutral bearer token。未设置时会继续尝试兼容别名。 |
+| `DEEPSEEK_API_KEY` | 空字符串 | 使用 DeepSeek 且未设置 `EMBED_API_KEY` 时需要 | `memory_manager.py`、Dashboard search status | DeepSeek embedding/API key 兼容别名，优先级低于 `EMBED_API_KEY`。 |
+| `OPENAI_API_KEY` | 空字符串 | 使用 OpenAI 且未设置前两个 key 时需要 | `memory_manager.py`、Dashboard search status、systemd memory 模板注释 | OpenAI-compatible embedding API 的历史兼容 bearer token。未设置任何 key 时 embedding 返回 `None`，检索退化到关键词/FTS 通道。 |
+| `EMBED_API_BASE` | `https://api.openai.com` | 否 | `memory_manager.py`、Dashboard search status | OpenAI-compatible API base。DeepSeek 使用 `https://api.deepseek.com`。 |
+| `EMBED_API_PATH` | 空字符串 | 否 | `memory_manager.py`、Dashboard search status | 可选 embeddings path override。未设置时，`/v1` base 会追加 `/embeddings`，DeepSeek base 会追加 `/embeddings`，其他 base 默认追加 `/v1/embeddings`。 |
 | `EMBED_MODEL` | `bge-m3` 或 `text-embedding-3-small` | 否 | `memory_manager.py`、`console.py` | embedding 模型。默认值由 provider 决定：`ollama` 为 `bge-m3`，`openai` 为 `text-embedding-3-small`。 |
 | `IMPRINT_BANK_EXCLUDE` | 空字符串 | 否 | `memory_manager.py` | 逗号分隔的 bank 文件名黑名单，例如 `draft.md,private.md`。匹配 `memory/bank/*.md` 的文件名。 |
 | `IMPRINT_LOCALE` | `en` | 否 | `memory_manager.py` | `unified_search_text()` 的结果标签语言。当前内置 `en` 和 `zh`。 |
+
+DeepSeek V4 Flash 示例：
+
+```bash
+export EMBED_PROVIDER=openai
+export EMBED_API_BASE=https://api.deepseek.com
+export EMBED_API_KEY=sk-...
+export EMBED_MODEL=deepseek-v4-flash
+```
+
+也可以把 key 写入 `DEEPSEEK_API_KEY`：
+
+```bash
+export EMBED_PROVIDER=openai
+export EMBED_API_BASE=https://api.deepseek.com
+export DEEPSEEK_API_KEY=sk-...
+export EMBED_MODEL=deepseek-v4-flash
+```
+
+`EMBED_API_KEY` 优先级最高；`DEEPSEEK_API_KEY` 和 `OPENAI_API_KEY` 是兼容别名。DeepSeek provider 超时、返回空 embedding 或缺少 key 时，MemoClover 会记录 provider、model、endpoint 和错误原因，并降级到 FTS5/LIKE 文本检索。
 
 ### HTTP OAuth
 
@@ -228,7 +251,7 @@ python3 scripts/generate_oauth.py
 
 | Unit | 默认环境变量 |
 |---|---|
-| `memo-clover@.service` | `IMPRINT_DATA_DIR=/home/%i/.imprint`、`TZ_OFFSET=0`，并注释了 `EMBED_PROVIDER=openai`、`OPENAI_API_KEY=sk-...` |
+| `memo-clover@.service` | `IMPRINT_DATA_DIR=/home/%i/.imprint`、`TZ_OFFSET=0`，并注释了 `EMBED_PROVIDER=openai`、`OPENAI_API_KEY=sk-...`；DeepSeek 部署可改用 `EMBED_API_BASE=https://api.deepseek.com`、`EMBED_API_KEY=sk-...`、`EMBED_MODEL=deepseek-v4-flash` |
 | `imprint-dashboard@.service` | `IMPRINT_DATA_DIR=/home/%i/.imprint`、`TZ_OFFSET=0` |
 | `imprint-heartbeat@.service` | `IMPRINT_DATA_DIR=/home/%i/.imprint`、`TZ_OFFSET=0`、`HEARTBEAT_INTERVAL=900`，并注释了 Telegram token/chat id |
 | `imprint-telegram@.service` | `PATH=/home/%i/.local/bin:/usr/local/bin:/usr/bin:/bin` |
@@ -258,4 +281,3 @@ ExecStart=/home/%i/claude-imprint/.venv/bin/memo-clover --http
 | `LLM_API_KEY` | 当前代码未读取。 |
 | `MEMORY_SECRET` | 当前代码未读取。HTTP 鉴权使用 `~/.imprint-oauth.json` 或 `OAUTH_*`。 |
 | `IMPRINT_LAT` / `IMPRINT_LON` | 只在 skill 文档示例中提到，当前代码未读取。 |
-
