@@ -9,8 +9,15 @@ x-imprint-base: &imprint-base
     TZ_OFFSET: ${TZ_OFFSET:-0}
     LLM_BASE_URL: ${LLM_BASE_URL:-}
     LLM_API_KEY: ${LLM_API_KEY:-}
-    LLM_MODEL: ${LLM_MODEL:-deepseek-chat}
+    LLM_MODEL: ${LLM_MODEL:-deepseek-v4-flash}
     OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+    EMBED_PROVIDER: ${EMBED_PROVIDER:-ollama}
+    EMBED_API_BASE: ${EMBED_API_BASE:-https://api.openai.com}
+    EMBED_API_PATH: ${EMBED_API_PATH:-}
+    EMBED_API_KEY: ${EMBED_API_KEY:-}
+    DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    EMBED_MODEL: ${EMBED_MODEL:-}
     COMPRESS_MODEL: ${COMPRESS_MODEL:-goekdenizguelmez/JOSIEFIED-Qwen3:8b}
     DECAY_LAMBDA: ${DECAY_LAMBDA:-0.05}
     DECAY_THRESHOLD: ${DECAY_THRESHOLD:-0.30}

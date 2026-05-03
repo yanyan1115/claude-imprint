@@ -1302,7 +1302,17 @@ Query parameters:
 | Name | Type | Default | Meaning |
 |---|---|---|---|
 | `q` | `str` | `""` | Optional content substring search. |
-| `limit` | `int` | `20` | Max rows. Clamped to `1..100`. |
+| `page` | `int` | `1` | 1-based page number. Values below `1` are clamped to `1`. |
+| `limit` | `int` | `50` | Max rows per page. Clamped to `1..100`. |
+| `status` | `str` | `""` | Optional Dashboard status filter. Accepted values: `total`, `protected`, `surfacing`, `resolved`, `archived`, `low_score`, `decaying`. Empty value is treated as `total`. |
+
+Invalid `status` values return `400`:
+
+```json
+{
+  "error": "unknown memory status filter: stale"
+}
+```
 
 Response JSON:
 
@@ -1329,7 +1339,19 @@ Response JSON:
         "zh": "不衰减"
       }
     }
-  ]
+  ],
+  "meta": {
+    "search_mode": "fts5_fallback",
+    "provider": "openai",
+    "model": "deepseek-v4-flash",
+    "reason": "",
+    "page": 1,
+    "limit": 50,
+    "has_more": true,
+    "filter": "protected",
+    "total": 73,
+    "error": ""
+  }
 }
 ```
 
@@ -1339,7 +1361,9 @@ Notes:
 - Missing fields are returned with Dashboard defaults.
 - Optional fields are returned only if physically present: `archived`, `is_archived`, `decay_score`, `status`.
 - Current core schema uses `recalled_count` and `last_accessed_at`, but this Dashboard route currently exposes compatibility names `activation_count` and `last_active`.
-- If `memory.db` or `memories` table is missing, returns `{"memories": []}`.
+- The Dashboard opens SQLite through a helper that registers MemoClover's `segment_cjk()` function before running queries, so FTS5 triggers and CJK tokenization functions are available on this connection.
+- When `status` is empty or `total`, pagination is applied in SQL with `LIMIT/OFFSET`. When a specific status is selected, Dashboard fetches matching rows, applies the derived status filter, then pages the filtered list.
+- If `memory.db` or `memories` table is missing, returns an empty `memories` list plus `meta` with `has_more=false`.
 
 ---
 
@@ -1609,6 +1633,7 @@ Notes:
 - Core fields `content`, `category`, and `importance` are updated through `mem.update_memory()`.
 - Emotional metadata fields are updated directly through SQLite after dynamic column detection.
 - Metadata fields absent from old databases are skipped safely.
+- The direct SQLite metadata update uses the same Dashboard connection helper as list/search operations, which registers `segment_cjk()` before executing `UPDATE`. This prevents FTS5 trigger failures such as `no such function: segment_cjk` on databases with CJK tokenizer triggers.
 
 ---
 

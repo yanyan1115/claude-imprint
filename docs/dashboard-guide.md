@@ -105,7 +105,7 @@ Terminal 组件启动逻辑：
 | API | 作用 |
 |---|---|
 | `GET /api/heatmap` | 生成 interaction heatmap。 |
-| `GET /api/memories?q=&limit=` | 搜索或列出记忆。 |
+| `GET /api/memories?q=&page=&limit=&status=` | 分页搜索或列出记忆，支持状态标签过滤。 |
 | `GET /api/search-status?force=` | 探测 MemoClover embedding provider，带 30 秒 TTL 缓存。 |
 | `PUT /api/memories/{memory_id}` | 编辑记忆内容、分类、重要性、情感和衰减元数据。 |
 | `DELETE /api/memories/{memory_id}` | 物理删除一条记忆。 |
@@ -225,7 +225,7 @@ GET /api/logs/{key}
 Memory 搜索框调用：
 
 ```text
-GET /api/memories?q=<query>&limit=20
+GET /api/memories?q=<query>&page=1&limit=50&status=<status>
 ```
 
 后端 `_fetch_memories()` 直接查 SQLite：
@@ -235,6 +235,22 @@ GET /api/memories?q=<query>&limit=20
 - 缺失字段会用 Dashboard 默认值补齐。
 - 搜索只做 `content LIKE ?`，不是核心包的 unified search。
 - 按 `created_at` 或 `id` 倒序。
+- 默认每页返回 50 条；`limit` 会被限制在 `1..100`。
+- 返回 `meta.has_more=true` 时，前端显示加载更多按钮；点击后把 `page` 加 1，并把下一页结果追加到当前列表。
+
+Memory 区域顶部的状态标签来自 `/api/decay-status`。点击标签会设置 `status` 参数并重新拉取第一页：
+
+| 标签 | status 值 | 行为 |
+|---|---|---|
+| `总数` / `total` | 空值或 `total` | 清除过滤，显示全部记忆。 |
+| `保护` / `protected` | `protected` | 只显示当前衰减状态为 protected 的记忆。 |
+| `主动浮现` / `surfacing` | `surfacing` | 只显示未解决且 arousal 较高的记忆。 |
+| `已解决` / `resolved` | `resolved` | 只显示 `resolved` 为真的记忆。 |
+| `已归档` / `archived` | `archived` | 只显示已归档或状态归档的记忆。 |
+| `低分` / `low score` | `low_score` | 只显示当前衰减状态为 low_score 的记忆。 |
+| `衰减中` / `decaying` | `decaying` | 只显示当前衰减状态为 decaying 的记忆。 |
+
+被选中的状态标签会添加 active 样式，高亮当前过滤视图。再次点击当前标签，或点击 `总数` / `total`，会取消选中并恢复显示全部。搜索框输入变化、编辑或删除记忆后，也会按当前状态过滤重新拉取列表。
 
 编辑记忆时，前端提交：
 
@@ -254,7 +270,7 @@ GET /api/memories?q=<query>&limit=20
 后端处理分两段：
 
 1. `content`、`category`、`importance` 通过 `memo_clover.memory_manager.update_memory()` 更新；如果更新内容，核心包会刷新 embedding。
-2. `valence`、`arousal`、`resolved`、`pinned`、`decay_rate` 通过 Dashboard 直接执行 SQLite `UPDATE`，且只在对应列存在时更新。
+2. `valence`、`arousal`、`resolved`、`pinned`、`decay_rate` 通过 Dashboard 直接执行 SQLite `UPDATE`，且只在对应列存在时更新。Dashboard 打开 SQLite 连接时会注册 `segment_cjk()`，避免 FTS5 触发器在编辑记忆时抛出 `no such function: segment_cjk`。
 
 Dashboard 中的 `activation_count` 和 `last_active` 是兼容字段名。当前核心 schema 使用 `recalled_count` 和 `last_accessed_at`，Dashboard 并没有把它们映射成 `activation_count` / `last_active`，所以在当前库上这两个 badge 可能显示默认值或空值。
 
@@ -279,14 +295,15 @@ GET /api/search-status?force=true
 
 - Dashboard 直接读取 `memo_clover.memory_manager` 中的 `EMBED_PROVIDER`、`EMBED_MODEL`、`OLLAMA_URL`、`EMBED_API_BASE` 等配置。
 - `ollama` provider 会用短 timeout 调用 `/api/embed` 做轻量探测。
-- `openai` provider 会先检查 `OPENAI_API_KEY`，再调用 OpenAI-compatible embeddings endpoint。
+- `openai` provider 会先检查 `EMBED_API_KEY`、`DEEPSEEK_API_KEY` 或 `OPENAI_API_KEY`，再调用 OpenAI-compatible embeddings endpoint。
+- DeepSeek V4 Flash 可以用 `EMBED_PROVIDER=openai`、`EMBED_API_BASE=https://api.deepseek.com`、`EMBED_API_KEY=sk-...`、`EMBED_MODEL=deepseek-v4-flash` 接入。
 - 探测结果有 30 秒 TTL 缓存，避免页面轮询频繁打 embedding 服务。
 - 前端在页面加载和每 30 秒调用 `fetchSearchStatus()`，并用原生 `title` tooltip 展示 provider、model 和失败原因。
 
 黄色 fallback 的排查顺序：
 
 1. 确认 Ollama 或 OpenAI-compatible embedding 服务正在运行。
-2. 确认 `EMBED_PROVIDER`、`EMBED_MODEL`、`OLLAMA_URL` / `EMBED_API_BASE`、`OPENAI_API_KEY` 与运行环境一致。
+2. 确认 `EMBED_PROVIDER`、`EMBED_MODEL`、`OLLAMA_URL` / `EMBED_API_BASE`、`EMBED_API_KEY` / `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` 与运行环境一致。
 3. Docker Compose vector profile 下，确认 `ollama` 容器已启动，并已执行 `ollama pull bge-m3`。
 4. 查看 `logs/http-runtime.log` / `logs/http-runtime.err.log` 或 Memory HTTP 服务日志，确认 MemoClover 是否记录了 embedding fallback warning。
 5. 修复 provider 后等待下一次 30 秒刷新，或调用 `/api/search-status?force=true` 立即重新探测。

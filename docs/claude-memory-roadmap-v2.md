@@ -352,12 +352,24 @@ surfaced = get_surfaced_memories(threshold=0.7)
 - [x] 模板覆盖关系快照（Roleplay / Persona）、长期偏好、沟通风格和重要边界。
 - [x] 交付物：`docs/claude-md-template.md`。
 
-### 5.11 P1：发布
+### 5.11 P1：发布（已完成）
 
-- GitHub 建仓库（或直接在 Imprint fork 上发布），推代码
+- [x] GitHub 建仓库（或直接在 Imprint fork 上发布），推代码
 - 写一篇使用分享帖（可以在小红书发）
 
 **完成标志：** 一个从未接触过这个项目的人，按 README 操作，15 分钟内跑通 Phase 1。
+
+### 5.12 P1：DeepSeek 迁移与 Dashboard 核心链路修复（已完成）
+
+本轮完成 MemoClover 核心检索链路和 `imprint_dashboard` 记忆管理体验的集中加固：
+
+- [x] 核心搜索优化：FTS5 多词搜索改为 token-level OR 召回，降低长自然语言查询对 MATCH 的过度约束。
+- [x] 向量降级可观测：embedding provider 超时、空 payload 或异常时记录 provider / model / endpoint，并回退到 FTS5 / LIKE 文本检索。
+- [x] DeepSeek V4 Flash 接入：通过 OpenAI-compatible 路径支持 `EMBED_PROVIDER=openai`、`EMBED_API_BASE=https://api.deepseek.com`、`EMBED_MODEL=deepseek-v4-flash`，并沉淀到 `.env.example`、README、架构文档和 compose 环境变量。
+- [x] Dashboard `segment_cjk` 修复：所有直接 SQLite 更新记忆 metadata 的连接在执行 UPDATE 前注册 `segment_cjk()`，避免 FTS5 trigger 抛出 `no such function: segment_cjk`。
+- [x] Dashboard 列表分页：解除前端硬编码 `limit=20`，`GET /api/memories` 支持 `page` / `limit` / `status`，前端默认 50 条并支持加载更多。
+- [x] Dashboard 状态标签联动：顶部 `已保护`、`低分`、`衰减中` 等标签支持点击过滤、Active 高亮和再次点击取消过滤。
+- [x] 回归测试：补充 Dashboard 更新记忆不再触发 `segment_cjk` 丢失的测试、分页/状态过滤测试、DeepSeek embedding 配置加载测试。
 
 ---
 

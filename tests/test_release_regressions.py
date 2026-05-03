@@ -262,6 +262,113 @@ class DashboardSummaryApiTests(unittest.TestCase):
         self.assertFalse(data["fallback"])
         self.assertEqual(data["message"], "Vector Search")
 
+    def test_memory_metadata_update_registers_segment_cjk(self):
+        from packages.imprint_dashboard import dashboard
+
+        class JsonRequest:
+            async def json(self):
+                return {"pinned": True}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.executescript("""
+                    CREATE TABLE memories (
+                        id INTEGER PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        category TEXT DEFAULT 'general',
+                        source TEXT DEFAULT 'cc',
+                        tags TEXT DEFAULT '[]',
+                        importance INTEGER DEFAULT 5,
+                        created_at TEXT NOT NULL,
+                        valence REAL DEFAULT 0.5,
+                        arousal REAL DEFAULT 0.3,
+                        resolved INTEGER DEFAULT 1,
+                        decay_rate REAL DEFAULT 0.05,
+                        pinned INTEGER DEFAULT 0
+                    );
+                    CREATE TABLE trigger_log (memory_id INTEGER, segmented TEXT);
+                    INSERT INTO memories (id, content, created_at)
+                    VALUES (1, '喜欢攀岩和热茶', '2026-05-03 09:00');
+                    CREATE TRIGGER memories_au AFTER UPDATE ON memories BEGIN
+                        INSERT INTO trigger_log(memory_id, segmented)
+                        VALUES (new.id, segment_cjk(new.content));
+                    END;
+                """)
+                conn.commit()
+            finally:
+                conn.close()
+
+            old_data_dir = dashboard.DATA_DIR
+            try:
+                dashboard.DATA_DIR = Path(tmp)
+                response = asyncio.run(dashboard.api_update_memory(1, JsonRequest()))
+            finally:
+                dashboard.DATA_DIR = old_data_dir
+
+            self.assertEqual(response, {"ok": True})
+            conn = sqlite3.connect(str(db_path))
+            try:
+                row = conn.execute("SELECT segmented FROM trigger_log WHERE memory_id = 1").fetchone()
+            finally:
+                conn.close()
+            self.assertIsNotNone(row)
+            self.assertIn("攀", row[0])
+
+    def test_memories_endpoint_paginates_and_filters_status(self):
+        from packages.imprint_dashboard import dashboard
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute("""
+                    CREATE TABLE memories (
+                        id INTEGER PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        category TEXT DEFAULT 'general',
+                        source TEXT DEFAULT 'cc',
+                        tags TEXT DEFAULT '[]',
+                        importance INTEGER DEFAULT 5,
+                        created_at TEXT NOT NULL,
+                        valence REAL DEFAULT 0.5,
+                        arousal REAL DEFAULT 0.3,
+                        resolved INTEGER DEFAULT 0,
+                        decay_rate REAL DEFAULT 0.05,
+                        pinned INTEGER DEFAULT 0
+                    )
+                """)
+                for i in range(55):
+                    conn.execute(
+                        """INSERT INTO memories
+                           (id, content, category, source, tags, importance, created_at, pinned)
+                           VALUES (?, ?, 'general', 'cc', '[]', 5, ?, ?)""",
+                        (i + 1, f"memory {i + 1}", f"2026-05-03 {i % 24:02d}:00", 1 if i == 0 else 0),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            old_data_dir = dashboard.DATA_DIR
+            try:
+                dashboard.DATA_DIR = Path(tmp)
+                with mock.patch.object(
+                    dashboard,
+                    "get_search_status",
+                    return_value={"mode": "text_only", "fallback": True, "provider": "openai", "model": "deepseek-v4-flash"},
+                ):
+                    first_page = asyncio.run(dashboard.api_memories(page=1, limit=50))
+                    protected = asyncio.run(dashboard.api_memories(page=1, limit=50, status="protected"))
+            finally:
+                dashboard.DATA_DIR = old_data_dir
+
+        self.assertEqual(len(first_page["memories"]), 50)
+        self.assertTrue(first_page["meta"]["has_more"])
+        self.assertEqual(first_page["meta"]["limit"], 50)
+        self.assertEqual(len(protected["memories"]), 1)
+        self.assertEqual(protected["meta"]["filter"], "protected")
+
 
 if __name__ == "__main__":
     unittest.main()
