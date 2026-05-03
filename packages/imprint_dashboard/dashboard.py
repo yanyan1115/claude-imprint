@@ -9,6 +9,7 @@ import re
 import subprocess
 import signal
 import json
+import logging
 import shutil
 import sqlite3
 import time
@@ -23,6 +24,7 @@ import sys
 from memo_clover import memory_manager as mem
 
 app = FastAPI(title="Claude Imprint")
+logger = logging.getLogger(__name__)
 BASE = Path(__file__).parent.parent.parent  # packages/imprint_dashboard -> project root
 DATA_DIR = Path(os.environ.get("IMPRINT_DATA_DIR", str(Path.home() / ".imprint")))
 TZ_OFFSET = int(os.environ.get("TZ_OFFSET", 0))
@@ -267,6 +269,14 @@ def _probe_ollama_search_status(provider, model):
             reason="Ollama returned an empty embedding payload",
         )
     except Exception as exc:
+        logger.warning(
+            "Dashboard Ollama search probe failed; provider=%s model=%s endpoint=%s error=%s",
+            provider,
+            model,
+            endpoint,
+            exc,
+            exc_info=True,
+        )
         return _search_status_payload(
             mode="text_only",
             fallback=True,
@@ -278,17 +288,34 @@ def _probe_ollama_search_status(provider, model):
 
 
 def _probe_openai_search_status(provider, model):
-    api_key = getattr(mem, "OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", ""))
+    api_key = (
+        getattr(mem, "EMBED_API_KEY", "")
+        or getattr(mem, "OPENAI_API_KEY", "")
+        or os.environ.get("EMBED_API_KEY", "")
+        or os.environ.get("DEEPSEEK_API_KEY", "")
+        or os.environ.get("OPENAI_API_KEY", "")
+    )
     base = getattr(mem, "EMBED_API_BASE", os.environ.get("EMBED_API_BASE", "https://api.openai.com"))
-    endpoint = f"{base.rstrip('/')}/v1/embeddings"
+    api_path = getattr(mem, "EMBED_API_PATH", os.environ.get("EMBED_API_PATH", ""))
+    if hasattr(mem, "_openai_embeddings_url"):
+        endpoint = mem._openai_embeddings_url(base, api_path)
+    else:
+        endpoint = f"{base.rstrip('/')}/v1/embeddings"
     if not api_key:
+        logger.warning(
+            "Dashboard OpenAI-compatible search probe cannot run because no embedding API key is configured; "
+            "provider=%s model=%s endpoint=%s",
+            provider,
+            model,
+            endpoint,
+        )
         return _search_status_payload(
             mode="text_only",
             fallback=True,
             provider=provider,
             model=model,
             endpoint=endpoint,
-            reason="OPENAI_API_KEY is not configured",
+            reason="EMBED_API_KEY, DEEPSEEK_API_KEY, or OPENAI_API_KEY is not configured",
         )
 
     try:
@@ -321,6 +348,14 @@ def _probe_openai_search_status(provider, model):
             reason="Embedding API returned an empty payload",
         )
     except Exception as exc:
+        logger.warning(
+            "Dashboard OpenAI-compatible search probe failed; provider=%s model=%s endpoint=%s error=%s",
+            provider,
+            model,
+            endpoint,
+            exc,
+            exc_info=True,
+        )
         return _search_status_payload(
             mode="text_only",
             fallback=True,
@@ -596,6 +631,33 @@ MEMORY_FIELD_DEFAULTS = {
     "last_active": None,
 }
 MEMORY_OPTIONAL_FIELDS = ("archived", "is_archived", "decay_score", "status")
+MEMORY_STATUS_FILTERS = {
+    "total",
+    "protected",
+    "surfacing",
+    "resolved",
+    "archived",
+    "low_score",
+    "decaying",
+}
+
+
+def _connect_memory_db(db_path=None):
+    """Open a dashboard SQLite connection with MemoClover's custom SQL functions."""
+    path = Path(db_path) if db_path else DATA_DIR / "memory.db"
+    conn = sqlite3.connect(str(path))
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.create_function("segment_cjk", 1, mem.segment_cjk)
+    except Exception as exc:
+        logger.exception(
+            "Failed to register SQLite function segment_cjk for dashboard connection; db=%s error=%s",
+            path,
+            exc,
+        )
+        conn.close()
+        raise
+    return conn
 
 
 def _table_columns(conn, table):
@@ -683,17 +745,31 @@ def _memory_decay_status(memory):
     return {"key": "decaying", "label": "Decaying", "zh": "衰减中"}
 
 
-def _fetch_memories(q="", limit=20, max_limit=100):
+def _memory_matches_status(memory, status):
+    status = (status or "").strip().lower()
+    if not status or status == "total":
+        return True
+    if status not in MEMORY_STATUS_FILTERS:
+        return False
+    if status == "resolved":
+        return _as_bool(memory.get("resolved"), False)
+    if status == "archived":
+        return _memory_is_archived(memory)
+    return memory.get("decay_status", {}).get("key") == status
+
+
+def _fetch_memories(q="", limit=20, page=1, status="", max_limit=100):
     db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
-        return []
+        return {"items": [], "total": 0, "page": 1, "limit": _clamp_int(limit, 1, max_limit, 20), "has_more": False}
     limit = _clamp_int(limit, 1, max_limit, 20)
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
+    page = _clamp_int(page, 1, 10**9, 1)
+    offset = (page - 1) * limit
+    conn = _connect_memory_db(db_path)
     try:
         columns = _table_columns(conn, "memories")
         if not columns:
-            return []
+            return {"items": [], "total": 0, "page": page, "limit": limit, "has_more": False}
         select_fields = []
         for field, default in MEMORY_FIELD_DEFAULTS.items():
             if field in columns:
@@ -711,9 +787,15 @@ def _fetch_memories(q="", limit=20, max_limit=100):
             sql += " WHERE content LIKE ?"
             params.append(f"%{q}%")
         elif q:
-            return []
-        sql += f" ORDER BY {order_col} DESC LIMIT ?"
-        params.append(limit)
+            return {"items": [], "total": 0, "page": page, "limit": limit, "has_more": False}
+        sql += f" ORDER BY {order_col} DESC"
+        if not status or status == "total":
+            sql += " LIMIT ? OFFSET ?"
+            params.append(limit + 1)
+            params.append(offset)
+        else:
+            sql += " LIMIT ?"
+            params.append(max(max_limit, 100000))
 
         rows = conn.execute(sql, params).fetchall()
         memories = []
@@ -726,25 +808,56 @@ def _fetch_memories(q="", limit=20, max_limit=100):
             memory["activation_count"] = _clamp_int(memory.get("activation_count"), 0, 10**9, 1)
             memory["decay_status"] = _memory_decay_status(memory)
             memories.append(memory)
-        return memories
-    except sqlite3.OperationalError:
-        return []
+        if status and status != "total":
+            memories = [m for m in memories if _memory_matches_status(m, status)]
+            paged = memories[offset:offset + limit + 1]
+        else:
+            paged = memories
+        has_more = len(paged) > limit
+        total = len(memories) if status and status != "total" else offset + min(len(paged), limit) + (1 if has_more else 0)
+        return {
+            "items": paged[:limit],
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "has_more": has_more,
+        }
+    except sqlite3.OperationalError as exc:
+        logger.exception(
+            "Failed to fetch dashboard memories; q=%r status=%r page=%s limit=%s error=%s",
+            q,
+            status,
+            page,
+            limit,
+            exc,
+        )
+        return {"items": [], "total": 0, "page": page, "limit": limit, "has_more": False, "error": str(exc)}
     finally:
         conn.close()
 
 
 @app.get("/api/memories")
-async def api_memories(q: str = "", limit: int = 20):
+async def api_memories(q: str = "", page: int = 1, limit: int = 50, status: str = ""):
     """Search or list memories"""
+    status_filter = (status or "").strip().lower()
+    if status_filter and status_filter not in MEMORY_STATUS_FILTERS:
+        return JSONResponse({"error": f"unknown memory status filter: {status_filter}"}, status_code=400)
     status = get_search_status()
     search_mode = "vector" if status.get("mode") == "vector" and not status.get("fallback") else "fts5_fallback"
+    result = _fetch_memories(q=q, page=page, limit=limit, status=status_filter)
     return {
-        "memories": _fetch_memories(q=q, limit=limit),
+        "memories": result.get("items", []),
         "meta": {
             "search_mode": search_mode,
             "provider": status.get("provider", ""),
             "model": status.get("model", ""),
             "reason": status.get("reason", ""),
+            "page": result.get("page", page),
+            "limit": result.get("limit", limit),
+            "has_more": result.get("has_more", False),
+            "filter": status_filter or "total",
+            "total": result.get("total"),
+            "error": result.get("error", ""),
         },
     }
 
@@ -752,7 +865,7 @@ async def api_memories(q: str = "", limit: int = 20):
 @app.get("/api/decay-status")
 async def api_decay_status():
     """Return lightweight Phase 3 decay/status counters for the dashboard."""
-    memories = _fetch_memories(limit=100000, max_limit=100000)
+    memories = _fetch_memories(limit=100000, max_limit=100000).get("items", [])
     stats = {
         "total": len(memories),
         "protected": 0,
@@ -868,7 +981,7 @@ async def api_update_memory(memory_id: int, request: Request):
             status_code = 404 if "not found" in result.get("error", "").lower() else 400
             return JSONResponse({"ok": False, "error": result.get("error", "update failed")}, status_code=status_code)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = _connect_memory_db(db_path)
     try:
         columns = _table_columns(conn, "memories")
         if not columns:
@@ -909,6 +1022,12 @@ async def api_update_memory(memory_id: int, request: Request):
             conn.execute(f"UPDATE memories SET {', '.join(updates)} WHERE id = ?", params)
             conn.commit()
     except sqlite3.OperationalError as e:
+        logger.exception(
+            "Dashboard memory update failed; memory_id=%s body_keys=%s error=%s",
+            memory_id,
+            sorted(body.keys()) if isinstance(body, dict) else [],
+            e,
+        )
         return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
     finally:
         conn.close()
@@ -1444,14 +1563,44 @@ async def dashboard():
     margin: 0 0 10px;
   }
   .decay-stat-chip {
+    appearance: none;
     border: 1px solid #E8E6DC;
     border-radius: 6px;
     padding: 5px 8px;
     font-size: 12px;
     color: #6B6962;
     background: #FAF9F5;
+    cursor: pointer;
+    font: inherit;
+    line-height: 1.2;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .decay-stat-chip:hover {
+    border-color: #D8B6A7;
+    color: #8C4F38;
+  }
+  .decay-stat-chip.active {
+    border-color: #B96748;
+    background: #FFF4EE;
+    color: #8C4F38;
+    box-shadow: inset 0 0 0 1px rgba(185,103,72,0.16);
   }
   .decay-stat-chip strong { color: #B96748; font-weight: 600; }
+  .memory-footer {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .load-more-btn {
+    border: 1px solid #D8B6A7;
+    background: #FFFFFF;
+    color: #8C4F38;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .load-more-btn:hover { background: #FFF4EE; }
   .memory-actions {
     opacity: 0;
     transition: opacity 0.15s;
@@ -2045,6 +2194,9 @@ async def dashboard():
   <div class="decay-stat-row" id="decay-status">Loading...</div>
   <input class="search-box" type="text" placeholder="Search memories..." id="memory-search" oninput="searchMemories()">
   <div id="memory-list" style="max-height:500px;overflow-y:auto;"></div>
+  <div class="memory-footer">
+    <button class="load-more-btn" id="memory-load-more" onclick="loadMoreMemories()" style="display:none;">Load more</button>
+  </div>
 </div>
 
 <div class="live-files-section">
@@ -2154,6 +2306,7 @@ const i18n = {
     searchModeVectorTip: 'Vector engine is responding; semantic retrieval is available.',
     searchModeFallbackTip: 'Vector engine is not responding; current searches use text-only retrieval.',
     noMemories: 'No memories yet',
+    loadMore: 'Load more',
     edit: 'Edit', delete: 'Delete', cancel: 'Cancel', save: 'Save',
     editMemory: 'Edit Memory',
     importance: 'Importance 1-10',
@@ -2218,6 +2371,7 @@ const i18n = {
     searchModeVectorTip: '向量引擎响应正常，语义检索可用。',
     searchModeFallbackTip: '向量引擎未响应，当前使用纯文本检索。',
     noMemories: '暂无记忆',
+    loadMore: '加载更多',
     edit: '编辑', delete: '删除', cancel: '取消', save: '保存',
     editMemory: '编辑记忆',
     importance: '重要性 1-10',
@@ -2279,6 +2433,8 @@ function applyStaticI18n() {
   const memTitle = document.querySelector('#memory-section .memory-title-row h2');
   if (memTitle) memTitle.textContent = t('memoryTitle');
   document.getElementById('memory-search').placeholder = t('searchPlaceholder');
+  const loadMore = document.getElementById('memory-load-more');
+  if (loadMore) loadMore.textContent = t('loadMore');
   document.querySelector('.modal h3').textContent = t('editMemory');
   const summaryModalTitle = document.querySelector('#summary-edit-modal h3');
   if (summaryModalTitle) summaryModalTitle.textContent = t('editSummary');
@@ -2518,13 +2674,23 @@ async function saveSummary() {
   fetchSummaries();
 }
 
-async function searchMemories() {
+const MEMORY_PAGE_SIZE = 50;
+let memoryPage = 1;
+let memoryHasMore = false;
+let activeMemoryStatusFilter = '';
+
+async function searchMemories(options = {}) {
   try {
+    const append = !!options.append;
+    if (!append) memoryPage = 1;
     const q = document.getElementById('memory-search').value;
-    const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&limit=20`);
+    const statusParam = activeMemoryStatusFilter ? '&status=' + encodeURIComponent(activeMemoryStatusFilter) : '';
+    const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&page=${memoryPage}&limit=${MEMORY_PAGE_SIZE}${statusParam}`);
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'memory fetch failed');
-    renderMemories(data.memories || []);
+    memoryHasMore = !!(data.meta && data.meta.has_more);
+    renderMemories(data.memories || [], append);
+    updateMemoryLoadMore();
     fetchDecayStatus();
   } catch(e) {
     console.error('memory fetch error:', e);
@@ -2532,6 +2698,25 @@ async function searchMemories() {
 }
 
 let allMemories = [];
+function loadMoreMemories() {
+  if (!memoryHasMore) return;
+  memoryPage += 1;
+  searchMemories({append: true});
+}
+
+function updateMemoryLoadMore() {
+  const btn = document.getElementById('memory-load-more');
+  if (!btn) return;
+  btn.textContent = t('loadMore');
+  btn.style.display = memoryHasMore ? 'inline-flex' : 'none';
+}
+
+function toggleMemoryStatusFilter(key) {
+  activeMemoryStatusFilter = key === 'total' || activeMemoryStatusFilter === key ? '' : key;
+  searchMemories();
+  fetchDecayStatus();
+}
+
 function formatMemoryNumber(value, digits = 2) {
   if (value === null || value === undefined || value === '') return '-';
   const n = Number(value);
@@ -2547,8 +2732,8 @@ function memoryDecayStatus(m) {
   };
 }
 
-function renderMemories(memories) {
-  allMemories = memories || [];
+function renderMemories(memories, append = false) {
+  allMemories = append ? allMemories.concat(memories || []) : (memories || []);
   const list = document.getElementById('memory-list');
   if (!allMemories.length) {
     list.innerHTML = '<div style="color:#666;padding:20px;text-align:center">' + t('noMemories') + '</div>';
@@ -2659,7 +2844,11 @@ async function fetchDecayStatus() {
     const labels = lang === 'zh'
       ? [['total','总数'], ['protected','保护'], ['surfacing','主动浮现'], ['resolved','已解决'], ['archived','已归档'], ['low_score','低分'], ['decaying','衰减中']]
       : [['total','total'], ['protected','protected'], ['surfacing','surfacing'], ['resolved','resolved'], ['archived','archived'], ['low_score','low score'], ['decaying','decaying']];
-    el.innerHTML = labels.map(([key, label]) => '<span class="decay-stat-chip">' + escapeHtml(label) + ' <strong>' + escapeHtml(data[key] || 0) + '</strong></span>').join('');
+    el.innerHTML = labels.map(([key, label]) => {
+      const isActive = activeMemoryStatusFilter === key || (!activeMemoryStatusFilter && key === 'total');
+      return '<button type="button" class="decay-stat-chip' + (isActive ? ' active' : '') + '" onclick="toggleMemoryStatusFilter(\\'' + key + '\\')">'
+        + escapeHtml(label) + ' <strong>' + escapeHtml(data[key] || 0) + '</strong></button>';
+    }).join('');
   } catch(e) {
     console.error('decay status error:', e);
   }
