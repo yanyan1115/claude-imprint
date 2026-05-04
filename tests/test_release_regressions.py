@@ -403,6 +403,7 @@ class DashboardSummaryApiTests(unittest.TestCase):
                     return_value={"mode": "text_only", "fallback": True, "provider": "openai", "model": "deepseek-v4-flash"},
                 ):
                     first_page = asyncio.run(dashboard.api_memories(page=1, limit=50))
+                    second_page = asyncio.run(dashboard.api_memories(page=2, limit=50))
                     protected = asyncio.run(dashboard.api_memories(page=1, limit=50, status="protected"))
             finally:
                 dashboard.DATA_DIR = old_data_dir
@@ -410,6 +411,10 @@ class DashboardSummaryApiTests(unittest.TestCase):
         self.assertEqual(len(first_page["memories"]), 50)
         self.assertTrue(first_page["meta"]["has_more"])
         self.assertEqual(first_page["meta"]["limit"], 50)
+        self.assertEqual(first_page["meta"]["total"], 55)
+        self.assertEqual(len(second_page["memories"]), 5)
+        self.assertFalse(second_page["meta"]["has_more"])
+        self.assertEqual(second_page["meta"]["total"], 55)
         self.assertEqual(len(protected["memories"]), 1)
         self.assertEqual(protected["meta"]["filter"], "protected")
 

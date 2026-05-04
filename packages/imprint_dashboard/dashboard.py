@@ -790,12 +790,17 @@ def _fetch_memories(q="", limit=20, page=1, status="", max_limit=100):
 
         order_col = "created_at" if "created_at" in columns else "id"
         sql = f"SELECT {', '.join(select_fields)} FROM memories"
+        count_sql = "SELECT COUNT(*) FROM memories"
         params = []
+        count_params = []
         if q and "content" in columns:
             sql += " WHERE content LIKE ?"
+            count_sql += " WHERE content LIKE ?"
             params.append(f"%{q}%")
+            count_params.append(f"%{q}%")
         elif q:
             return {"items": [], "total": 0, "page": page, "limit": limit, "has_more": False}
+        total_count = conn.execute(count_sql, count_params).fetchone()[0]
         sql += f" ORDER BY {order_col} DESC"
         if not status or status == "total":
             sql += " LIMIT ? OFFSET ?"
@@ -822,7 +827,7 @@ def _fetch_memories(q="", limit=20, page=1, status="", max_limit=100):
         else:
             paged = memories
         has_more = len(paged) > limit
-        total = len(memories) if status and status != "total" else offset + min(len(paged), limit) + (1 if has_more else 0)
+        total = len(memories) if status and status != "total" else total_count
         return {
             "items": paged[:limit],
             "total": total,
@@ -1640,6 +1645,13 @@ async def dashboard():
     cursor: pointer;
   }
   .load-more-btn:hover { background: #FFF4EE; }
+  .load-more-btn:disabled {
+    border-color: #E8E6DC;
+    color: #8F8B80;
+    background: #FAF9F5;
+    cursor: default;
+  }
+  .load-more-btn:disabled:hover { background: #FAF9F5; }
   .toast {
     position: fixed;
     right: 20px;
@@ -2376,6 +2388,7 @@ const i18n = {
     searchModeFallbackTip: 'Vector engine is not responding; current searches use text-only retrieval.',
     noMemories: 'No memories yet',
     loadMore: 'Load more',
+    noMoreMemories: 'No more memories',
     edit: 'Edit', delete: 'Delete', cancel: 'Cancel', save: 'Save',
     editMemory: 'Edit Memory',
     importance: 'Importance 1-10',
@@ -2443,6 +2456,7 @@ const i18n = {
     searchModeFallbackTip: '向量引擎未响应，当前使用纯文本检索。',
     noMemories: '暂无记忆',
     loadMore: '加载更多',
+    noMoreMemories: '没有更多了',
     edit: '编辑', delete: '删除', cancel: '取消', save: '保存',
     editMemory: '编辑记忆',
     importance: '重要性 1-10',
@@ -2761,12 +2775,20 @@ async function saveSummary() {
 const MEMORY_PAGE_SIZE = 50;
 let memoryPage = 1;
 let memoryHasMore = false;
+let memoryLoading = false;
 let activeMemoryStatusFilter = '';
 
 async function searchMemories(options = {}) {
+  const append = !!options.append;
+  if (memoryLoading) return;
+  if (!append) {
+    memoryPage = 1;
+    allMemories = [];
+    renderMemories([]);
+  }
+  memoryLoading = true;
+  updateMemoryLoadMore();
   try {
-    const append = !!options.append;
-    if (!append) memoryPage = 1;
     const q = document.getElementById('memory-search').value;
     const statusParam = activeMemoryStatusFilter ? '&status=' + encodeURIComponent(activeMemoryStatusFilter) : '';
     const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&page=${memoryPage}&limit=${MEMORY_PAGE_SIZE}${statusParam}`);
@@ -2778,12 +2800,16 @@ async function searchMemories(options = {}) {
     fetchDecayStatus();
   } catch(e) {
     console.error('memory fetch error:', e);
+    showToast(t('memoryFetchFailed'));
+  } finally {
+    memoryLoading = false;
+    updateMemoryLoadMore();
   }
 }
 
 let allMemories = [];
 function loadMoreMemories() {
-  if (!memoryHasMore) return;
+  if (memoryLoading || !memoryHasMore) return;
   memoryPage += 1;
   searchMemories({append: true});
 }
@@ -2791,8 +2817,15 @@ function loadMoreMemories() {
 function updateMemoryLoadMore() {
   const btn = document.getElementById('memory-load-more');
   if (!btn) return;
-  btn.textContent = t('loadMore');
-  btn.style.display = memoryHasMore ? 'inline-flex' : 'none';
+  if (memoryLoading) {
+    btn.textContent = t('loading');
+    btn.disabled = true;
+    btn.style.display = 'inline-flex';
+    return;
+  }
+  btn.disabled = !memoryHasMore;
+  btn.textContent = memoryHasMore ? t('loadMore') : t('noMoreMemories');
+  btn.style.display = allMemories.length ? 'inline-flex' : 'none';
 }
 
 function toggleMemoryStatusFilter(key) {
