@@ -2816,6 +2816,7 @@ async function saveSummary() {
 }
 
 const MEMORY_PAGE_SIZE = 50;
+const MEMORY_FETCH_TIMEOUT_MS = 15000;
 let memoryPage = 1;
 let memoryHasMore = false;
 let memoryLoading = false;
@@ -2834,7 +2835,14 @@ async function searchMemories(options = {}) {
   try {
     const q = document.getElementById('memory-search').value;
     const statusParam = activeMemoryStatusFilter ? '&status=' + encodeURIComponent(activeMemoryStatusFilter) : '';
-    const r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&page=${memoryPage}&limit=${MEMORY_PAGE_SIZE}${statusParam}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), MEMORY_FETCH_TIMEOUT_MS);
+    let r;
+    try {
+      r = await fetch(`/api/memories?q=${encodeURIComponent(q)}&page=${memoryPage}&limit=${MEMORY_PAGE_SIZE}${statusParam}`, {signal: controller.signal});
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'memory fetch failed');
     memoryHasMore = !!(data.meta && data.meta.has_more);
