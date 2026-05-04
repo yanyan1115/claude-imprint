@@ -631,6 +631,7 @@ MEMORY_FIELD_DEFAULTS = {
     "last_active": None,
 }
 MEMORY_OPTIONAL_FIELDS = ("archived", "is_archived", "decay_score", "status")
+MEMORY_SAVE_FAILED_MESSAGE = "Save failed. Please try again."
 MEMORY_STATUS_FILTERS = {
     "total",
     "protected",
@@ -756,6 +757,13 @@ def _memory_matches_status(memory, status):
     if status == "archived":
         return _memory_is_archived(memory)
     return memory.get("decay_status", {}).get("key") == status
+
+
+def _memory_update_error_response(status_code=400):
+    return JSONResponse(
+        {"ok": False, "error": MEMORY_SAVE_FAILED_MESSAGE, "code": "memory_update_failed"},
+        status_code=status_code,
+    )
 
 
 def _fetch_memories(q="", limit=20, page=1, status="", max_limit=100):
@@ -964,7 +972,13 @@ async def api_delete_memory(memory_id: int):
 @app.put("/api/memories/{memory_id}")
 async def api_update_memory(memory_id: int, request: Request):
     """Update a memory"""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except (ValueError, UnicodeDecodeError) as exc:
+        logger.warning("Dashboard memory update received invalid JSON; memory_id=%s error=%s", memory_id, exc)
+        return JSONResponse({"ok": False, "error": "invalid JSON body"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "JSON body must be an object"}, status_code=400)
     db_path = DATA_DIR / "memory.db"
     if not db_path.exists():
         return JSONResponse({"ok": False, "error": "database not found"}, status_code=404)
@@ -976,12 +990,37 @@ async def api_update_memory(memory_id: int, request: Request):
         importance = _clamp_int(body.get("importance"), 1, 10, 5)
         if not content:
             return JSONResponse({"ok": False, "error": "content is required"}, status_code=400)
-        result = mem.update_memory(memory_id, content=content, category=category, importance=importance)
+        try:
+            result = mem.update_memory(memory_id, content=content, category=category, importance=importance)
+        except sqlite3.Error as exc:
+            logger.exception(
+                "MemoClover memory core update failed; memory_id=%s body_keys=%s error=%s",
+                memory_id,
+                sorted(body.keys()),
+                exc,
+            )
+            return _memory_update_error_response()
         if not result.get("ok"):
             status_code = 404 if "not found" in result.get("error", "").lower() else 400
-            return JSONResponse({"ok": False, "error": result.get("error", "update failed")}, status_code=status_code)
+            logger.warning(
+                "MemoClover memory core update returned failure; memory_id=%s status_code=%s error=%s",
+                memory_id,
+                status_code,
+                result.get("error", "update failed"),
+            )
+            if status_code == 404:
+                return JSONResponse({"ok": False, "error": "memory not found"}, status_code=404)
+            return _memory_update_error_response(status_code=status_code)
 
-    conn = _connect_memory_db(db_path)
+    try:
+        conn = _connect_memory_db(db_path)
+    except Exception as e:
+        logger.exception(
+            "Dashboard memory update could not open initialized database connection; memory_id=%s error=%s",
+            memory_id,
+            e,
+        )
+        return _memory_update_error_response(status_code=500)
     try:
         columns = _table_columns(conn, "memories")
         if not columns:
@@ -1021,14 +1060,14 @@ async def api_update_memory(memory_id: int, request: Request):
             params.append(memory_id)
             conn.execute(f"UPDATE memories SET {', '.join(updates)} WHERE id = ?", params)
             conn.commit()
-    except sqlite3.OperationalError as e:
+    except sqlite3.Error as e:
         logger.exception(
             "Dashboard memory update failed; memory_id=%s body_keys=%s error=%s",
             memory_id,
             sorted(body.keys()) if isinstance(body, dict) else [],
             e,
         )
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        return _memory_update_error_response()
     finally:
         conn.close()
     return {"ok": True}
@@ -1601,6 +1640,34 @@ async def dashboard():
     cursor: pointer;
   }
   .load-more-btn:hover { background: #FFF4EE; }
+  .toast {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    z-index: 2000;
+    max-width: min(360px, calc(100vw - 40px));
+    padding: 10px 13px;
+    border: 1px solid #E8E6DC;
+    border-radius: 7px;
+    background: #FFFFFF;
+    color: #3D3D3A;
+    box-shadow: 0 10px 26px rgba(61,61,58,0.14);
+    font-size: 13px;
+    line-height: 1.4;
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.18s, transform 0.18s;
+  }
+  .toast.active {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .toast.error {
+    border-color: #E5A7A0;
+    color: #A23B32;
+    background: #FFF7F6;
+  }
   .memory-actions {
     opacity: 0;
     transition: opacity 0.15s;
@@ -2265,6 +2332,8 @@ async def dashboard():
   </div>
 </div>
 
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
 // ─── i18n ───
 const i18n = {
@@ -2312,6 +2381,8 @@ const i18n = {
     importance: 'Importance 1-10',
     confirmDelete: 'Delete this memory?',
     actionFailed: 'Action failed',
+    saveFailed: 'Save failed. Please try again.',
+    memoryFetchFailed: 'Could not load memories. Please try again.',
     noData: 'No data',
     noFragment: 'No memories yet',
     fragmentTitle: 'Memory Fragment',
@@ -2377,6 +2448,8 @@ const i18n = {
     importance: '重要性 1-10',
     confirmDelete: '确定删除这条记忆？',
     actionFailed: '操作失败',
+    saveFailed: '保存失败，请稍后重试。',
+    memoryFetchFailed: '记忆加载失败，请稍后重试。',
     noData: '暂无数据',
     noFragment: '暂无记忆',
     fragmentTitle: '记忆碎片',
@@ -2401,6 +2474,17 @@ const i18n = {
 };
 let lang = localStorage.getItem('imprint-lang') || 'en';
 function t(key) { return i18n[lang][key] || i18n.en[key] || key; }
+let toastTimer = null;
+function showToast(message, type = 'error') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  if (toastTimer) clearTimeout(toastTimer);
+  el.textContent = message;
+  el.className = 'toast active ' + type;
+  toastTimer = setTimeout(() => {
+    el.className = 'toast';
+  }, 3600);
+}
 function toggleLang() {
   lang = lang === 'en' ? 'zh' : 'en';
   localStorage.setItem('imprint-lang', lang);
@@ -2827,7 +2911,8 @@ async function saveMemory() {
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok || data.ok === false) {
-    alert(data.error || t('actionFailed'));
+    console.error('memory save failed:', data);
+    showToast(t('saveFailed'));
     return;
   }
   closeEditModal();

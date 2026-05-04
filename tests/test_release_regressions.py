@@ -316,6 +316,50 @@ class DashboardSummaryApiTests(unittest.TestCase):
             self.assertIsNotNone(row)
             self.assertIn("攀", row[0])
 
+    def test_memory_update_hides_segment_cjk_error_from_user_response(self):
+        from packages.imprint_dashboard import dashboard
+
+        class JsonRequest:
+            async def json(self):
+                return {"content": "更新中文记忆", "category": "general", "importance": 5}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute("""
+                    CREATE TABLE memories (
+                        id INTEGER PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        category TEXT DEFAULT 'general',
+                        importance INTEGER DEFAULT 5,
+                        created_at TEXT NOT NULL
+                    )
+                """)
+                conn.execute(
+                    "INSERT INTO memories (id, content, created_at) VALUES (1, '旧中文记忆', '2026-05-03 09:00')"
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            old_data_dir = dashboard.DATA_DIR
+            try:
+                dashboard.DATA_DIR = Path(tmp)
+                with mock.patch.object(
+                    dashboard.mem,
+                    "update_memory",
+                    side_effect=sqlite3.OperationalError("no such function: segment_cjk"),
+                ):
+                    response = asyncio.run(dashboard.api_update_memory(1, JsonRequest()))
+            finally:
+                dashboard.DATA_DIR = old_data_dir
+
+        self.assertEqual(response.status_code, 400)
+        body = response.body.decode("utf-8")
+        self.assertIn("Save failed. Please try again.", body)
+        self.assertNotIn("segment_cjk", body)
+
     def test_memories_endpoint_paginates_and_filters_status(self):
         from packages.imprint_dashboard import dashboard
 
