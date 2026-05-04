@@ -759,6 +759,41 @@ def _memory_matches_status(memory, status):
     return memory.get("decay_status", {}).get("key") == status
 
 
+def _memory_status_sql_filter(status, columns):
+    status = (status or "").strip().lower()
+    if not status or status == "total" or status not in MEMORY_STATUS_FILTERS:
+        return "", []
+    if status == "resolved" and "resolved" in columns:
+        return "resolved = 1", []
+    if status == "protected":
+        clauses = []
+        if "pinned" in columns:
+            clauses.append("pinned = 1")
+        if "category" in columns:
+            clauses.append("category = ?")
+        if "decay_rate" in columns:
+            clauses.append("decay_rate = 0")
+        if clauses:
+            params = ["core_profile"] if "category" in columns else []
+            return "(" + " OR ".join(clauses) + ")", params
+    if status == "surfacing" and {"resolved", "arousal"}.issubset(columns):
+        return "(resolved = 0 AND arousal >= 0.7)", []
+    if status == "archived":
+        clauses = []
+        if "archived" in columns:
+            clauses.append("archived = 1")
+        if "is_archived" in columns:
+            clauses.append("is_archived = 1")
+        if "status" in columns:
+            clauses.append("LOWER(REPLACE(status, '-', '_')) IN (?, ?, ?)")
+        if clauses:
+            params = ["archived", "archive", "is_archived"] if "status" in columns else []
+            return "(" + " OR ".join(clauses) + ")", params
+    if status == "low_score" and "decay_score" in columns:
+        return "decay_score < 0.3", []
+    return "", []
+
+
 def _memory_update_error_response(status_code=400):
     return JSONResponse(
         {"ok": False, "error": MEMORY_SAVE_FAILED_MESSAGE, "code": "memory_update_failed"},
@@ -793,13 +828,21 @@ def _fetch_memories(q="", limit=20, page=1, status="", max_limit=100):
         count_sql = "SELECT COUNT(*) FROM memories"
         params = []
         count_params = []
+        where_clauses = []
         if q and "content" in columns:
-            sql += " WHERE content LIKE ?"
-            count_sql += " WHERE content LIKE ?"
+            where_clauses.append("content LIKE ?")
             params.append(f"%{q}%")
-            count_params.append(f"%{q}%")
         elif q:
             return {"items": [], "total": 0, "page": page, "limit": limit, "has_more": False}
+        status_clause, status_params = _memory_status_sql_filter(status, columns)
+        if status_clause:
+            where_clauses.append(status_clause)
+            params.extend(status_params)
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+            sql += where_sql
+            count_sql += where_sql
+            count_params = list(params)
         total_count = conn.execute(count_sql, count_params).fetchone()[0]
         sql += f" ORDER BY {order_col} DESC"
         if not status or status == "total":
@@ -2828,10 +2871,24 @@ function updateMemoryLoadMore() {
   btn.style.display = allMemories.length ? 'inline-flex' : 'none';
 }
 
+function updateMemoryFilterChips() {
+  document.querySelectorAll('#decay-status .decay-stat-chip').forEach(chip => {
+    const key = chip.dataset.filter || '';
+    chip.classList.toggle('active', key === (activeMemoryStatusFilter || 'total'));
+  });
+}
+
 function toggleMemoryStatusFilter(key) {
-  activeMemoryStatusFilter = key === 'total' || activeMemoryStatusFilter === key ? '' : key;
+  const nextFilter = key === 'total' || activeMemoryStatusFilter === key ? '' : key;
+  if (nextFilter === activeMemoryStatusFilter && key !== 'total') return;
+  activeMemoryStatusFilter = nextFilter;
+  memoryPage = 1;
+  memoryHasMore = false;
+  allMemories = [];
+  renderMemories([]);
+  updateMemoryLoadMore();
+  updateMemoryFilterChips();
   searchMemories();
-  fetchDecayStatus();
 }
 
 function formatMemoryNumber(value, digits = 2) {
@@ -2964,9 +3021,10 @@ async function fetchDecayStatus() {
       : [['total','total'], ['protected','protected'], ['surfacing','surfacing'], ['resolved','resolved'], ['archived','archived'], ['low_score','low score'], ['decaying','decaying']];
     el.innerHTML = labels.map(([key, label]) => {
       const isActive = activeMemoryStatusFilter === key || (!activeMemoryStatusFilter && key === 'total');
-      return '<button type="button" class="decay-stat-chip' + (isActive ? ' active' : '') + '" onclick="toggleMemoryStatusFilter(\\'' + key + '\\')">'
+      return '<button type="button" class="decay-stat-chip' + (isActive ? ' active' : '') + '" data-filter="' + escapeHtml(key) + '" onclick="toggleMemoryStatusFilter(\\'' + key + '\\')">'
         + escapeHtml(label) + ' <strong>' + escapeHtml(data[key] || 0) + '</strong></button>';
     }).join('');
+    updateMemoryFilterChips();
   } catch(e) {
     console.error('decay status error:', e);
   }

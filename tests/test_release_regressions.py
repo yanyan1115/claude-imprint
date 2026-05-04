@@ -418,6 +418,79 @@ class DashboardSummaryApiTests(unittest.TestCase):
         self.assertEqual(len(protected["memories"]), 1)
         self.assertEqual(protected["meta"]["filter"], "protected")
 
+    def test_memories_endpoint_filters_each_status(self):
+        from packages.imprint_dashboard import dashboard
+
+        rows = [
+            (1, "protected pinned", "general", 0.2, 0, 0.4, 1, 0, ""),
+            (2, "surfacing high arousal", "general", 0.9, 0, 0.4, 0, 0, ""),
+            (3, "resolved memory", "general", 0.2, 1, 0.4, 0, 0, ""),
+            (4, "archived memory", "general", 0.2, 0, 0.4, 0, 1, ""),
+            (5, "low score memory", "general", 0.2, 0, 0.2, 0, 0, ""),
+            (6, "decaying memory", "general", 0.2, 0, 0.8, 0, 0, ""),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "memory.db"
+            conn = sqlite3.connect(str(db_path))
+            try:
+                conn.execute("""
+                    CREATE TABLE memories (
+                        id INTEGER PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        category TEXT DEFAULT 'general',
+                        source TEXT DEFAULT 'cc',
+                        tags TEXT DEFAULT '[]',
+                        importance INTEGER DEFAULT 5,
+                        created_at TEXT NOT NULL,
+                        valence REAL DEFAULT 0.5,
+                        arousal REAL DEFAULT 0.3,
+                        resolved INTEGER DEFAULT 0,
+                        decay_rate REAL DEFAULT 0.05,
+                        pinned INTEGER DEFAULT 0,
+                        archived INTEGER DEFAULT 0,
+                        decay_score REAL DEFAULT 1.0,
+                        status TEXT DEFAULT ''
+                    )
+                """)
+                for row in rows:
+                    conn.execute(
+                        """INSERT INTO memories
+                           (id, content, category, source, tags, importance, created_at,
+                            arousal, resolved, decay_score, pinned, archived, decay_rate, status)
+                           VALUES (?, ?, ?, 'cc', '[]', 5, '2026-05-03 09:00',
+                                   ?, ?, ?, ?, ?, 0.05, ?)""",
+                        row,
+                    )
+                conn.commit()
+            finally:
+                conn.close()
+
+            old_data_dir = dashboard.DATA_DIR
+            try:
+                dashboard.DATA_DIR = Path(tmp)
+                with mock.patch.object(
+                    dashboard,
+                    "get_search_status",
+                    return_value={"mode": "text_only", "fallback": True, "provider": "openai", "model": "deepseek-v4-flash"},
+                ):
+                    results = {
+                        key: asyncio.run(dashboard.api_memories(page=1, limit=10, status=key))
+                        for key in ["protected", "surfacing", "resolved", "archived", "low_score", "decaying"]
+                    }
+            finally:
+                dashboard.DATA_DIR = old_data_dir
+
+        self.assertEqual([m["content"] for m in results["protected"]["memories"]], ["protected pinned"])
+        self.assertEqual([m["content"] for m in results["surfacing"]["memories"]], ["surfacing high arousal"])
+        self.assertEqual([m["content"] for m in results["resolved"]["memories"]], ["resolved memory"])
+        self.assertEqual([m["content"] for m in results["archived"]["memories"]], ["archived memory"])
+        self.assertEqual([m["content"] for m in results["low_score"]["memories"]], ["low score memory"])
+        self.assertEqual([m["content"] for m in results["decaying"]["memories"]], ["decaying memory"])
+        for key, data in results.items():
+            self.assertEqual(data["meta"]["filter"], key)
+            self.assertEqual(data["meta"]["total"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
